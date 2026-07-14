@@ -1204,7 +1204,7 @@ async function getAIReply(msg){
 
   try{
     const payload = {
-        model: 'google/gemini-2.0-flash-exp:free',
+        model: 'nvidia/llama-nemotron-rerank-vl-1b-v2:free',
         messages: [
             {
                 role: 'system',
@@ -1310,7 +1310,7 @@ async function runCertVerification() {
     try {
         const base64 = imgEl.src.split(',')[1];
         const payload = {
-            model: 'google/gemini-2.0-flash-exp:free',
+            model: 'nvidia/llama-nemotron-rerank-vl-1b-v2:free',
             messages: [{
                 role: 'user',
                 content: [
