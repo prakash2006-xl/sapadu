@@ -2,6 +2,15 @@
 
 const ADMIN_SECRET = 'batman';
 const DEFAULT_LAT=9.9252, DEFAULT_LNG=78.1198;
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwmR5nnlB1so5ez8EPXRkZPIU6Jngfp6qvumeoPd40HfSsbMath7cslbH2VfgqxcJGQRw/exec'; // <-- REPLACE THIS WITH YOUR DEPLOYED WEB APP URL
+
+// --- SUPABASE CONFIG ---
+const SUPABASE_URL = 'https://gyfubwmalzsjtbmlyhgl.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_X0UNvNRQfFStItXbSNlgbw_E_nT_cMC';
+let supabaseClient;
+if (typeof supabase !== 'undefined') {
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}
 
 function loadRegistry(){
   try{const d=localStorage.getItem('zh_registry');return d?JSON.parse(d):{};}
@@ -23,13 +32,32 @@ const DB = loadDB();
 
 async function syncDatabase() {
     try {
-        const res = await fetch('/api/sync');
+        // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+        /*
+        const res = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'sync' }) });
         const data = await res.json();
         if (data.success) {
             DB.donations = data.data.donations || [];
             DB.requests = data.data.requests || [];
             DB.volunteers = data.data.volunteers || [];
             DB.ratings = data.data.ratings || [];
+            saveDB();
+        }
+        */
+
+        // --- SUPABASE BACKEND ---
+        if (supabaseClient) {
+            const [donRes, reqRes, volRes, ratRes] = await Promise.all([
+                supabaseClient.from('donations').select('*'),
+                supabaseClient.from('requests').select('*'),
+                supabaseClient.from('volunteers').select('*'),
+                supabaseClient.from('ratings').select('*')
+            ]);
+            
+            DB.donations = donRes.data || [];
+            DB.requests = reqRes.data || [];
+            DB.volunteers = volRes.data || [];
+            DB.ratings = ratRes.data || [];
             saveDB();
         }
     } catch (e) {
@@ -554,10 +582,12 @@ if (signupForm) {
     const emoji=role==='admin'?'⚙️':'👤';
     
     try {
-      const res = await fetch('/api/signup', {
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password: pw, name, age, email, phone, role, emoji })
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'signup', payload: { username, password: pw, name, age, email, phone, role, emoji } })
       });
       const data = await res.json();
       if (data.success) {
@@ -567,6 +597,21 @@ if (signupForm) {
         afterLogin(username);
       } else {
         if(suerr)suerr.textContent=data.message;
+      }
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          const { data, error } = await supabaseClient.from('users').insert([{ username, password: pw, name, age, email, phone, role, emoji }]);
+          if (error) {
+              if (error.code === '23505') { if(suerr) suerr.textContent = 'Username already taken.'; }
+              else { if(suerr) suerr.textContent = error.message || 'Signup failed'; }
+          } else {
+              REGISTRY[username]={pw,role,name,age,email,phone,emoji};
+              saveRegistry();
+              toast(`Account created! Welcome, ${name} 🎉`,'ok');
+              afterLogin(username);
+          }
       }
     } catch (err) {
       if(suerr)suerr.textContent='Server error. Could not sign up.';
@@ -583,10 +628,12 @@ if (loginForm) {
     if(!un||!pw){if(lerr)lerr.textContent='Enter username and password.';return}
     
     try {
-      const res = await fetch('/api/login', {
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: un, password: pw })
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'login', payload: { username: un, password: pw } })
       });
       const data = await res.json();
       if (data.success) {
@@ -595,6 +642,20 @@ if (loginForm) {
         afterLogin(un);
       } else {
         if(lerr)lerr.textContent=data.message;
+      }
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          const { data, error } = await supabaseClient.from('users').select('*').eq('username', un).eq('password', pw);
+          if (error || !data || data.length === 0) {
+              if(lerr) lerr.textContent = 'Invalid credentials';
+          } else {
+              const u = data[0];
+              REGISTRY[un] = u;
+              saveRegistry();
+              afterLogin(un);
+          }
       }
     } catch (err) {
       if(lerr)lerr.textContent='Server error. Could not log in.';
@@ -755,8 +816,17 @@ if(donateForm) donateForm.addEventListener('submit', async e=>{
   const latOff=(Math.random()-0.5)*0.05,lngOff=(Math.random()-0.5)*0.05;
   const d={donor_username: APP.user, donor_name,donor_age,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
   try {
-      await fetch('/api/donations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'donations', payload: d }) });
       await syncDatabase();
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          await supabaseClient.from('donations').insert([d]);
+          await syncDatabase();
+      }
   } catch(e) {}
   updateNotifBadge();
   const typeInfo=FOOD_DB[foodType];
@@ -796,8 +866,18 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
   const pri=priorityScore(urg,don.expiry_days,don.freshness_score);const dist=getDonationDistance(don);
   const req={req_username: APP.user, req_name,req_age,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
   try {
-      await fetch('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'requests', payload: req }) });
       await syncDatabase();
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          await supabaseClient.from('requests').insert([req]);
+          await supabaseClient.from('donations').update({ status: 'requested' }).eq('id', req.donation_id);
+          await syncDatabase();
+      }
   } catch(e) {}
   byId('req-pri-preview').innerHTML=`<div style="padding:10px;background:#dbeafe;border-radius:8px;color:#1e40af;font-size:.84rem">🤖 Priority: <strong>${pri}/100</strong> · Distance: <strong>${dist.toFixed(2)} km</strong></div>`;
   byId('req-confirm').innerHTML=`<div class="notif-item" style="background:var(--g5);border-color:var(--g2)"><div class="notif-t">✅ P2P Request Confirmed</div><div class="notif-m">Priority: ${pri}/100 · ${dist.toFixed(2)} km away</div></div>`;
@@ -829,8 +909,20 @@ if(volForm) volForm.addEventListener('submit', async e=>{
   const assigned=pending.length>0,aReq=pending[0];
   const vol = {vol_username: APP.user, vol_name,vol_age,vehicle_type:f.vehicle_type.value,pickup_location:vol_pickup,shift:f.shift_sel.value,time_slot:APP.slot,status:assigned?'busy':'active', assigned_req_id: assigned ? aReq.id : null};
   try {
-      await fetch('/api/volunteers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vol) });
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'volunteers', payload: vol }) });
       await syncDatabase();
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          await supabaseClient.from('volunteers').insert([vol]);
+          if (vol.assigned_req_id) {
+              await supabaseClient.from('requests').update({ status: 'assigned' }).eq('id', vol.assigned_req_id);
+          }
+          await syncDatabase();
+      }
   } catch(e) {}
   const ar=byId('agent-res');
   if(assigned&&aReq){ar.innerHTML=`<div class="agent-res"><div style="font-size:2rem;margin-bottom:8px">🤖</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:6px">AI Assignment Complete</h3><p style="opacity:.8;font-size:.84rem">Deliver to: <strong>${esc(aReq.location_label||'See request details')}</strong></p><p style="font-size:.84rem;margin-top:4px">Priority: <strong>${aReq.priority_score}/100</strong></p></div>`;byId('smart-route-section').style.display='block';toast('🤖 AI assigned you to a delivery!','ok');}
@@ -919,8 +1011,17 @@ async function submitRating(){
   if(!name){toast('Please enter a name.','err');nameEl.focus();return;}
   const rating={target_username: APP.user, target:name,category:catEl.value,score:+scoreEl.value,review:reviewEl.value.trim()};
   try {
-      await fetch('/api/ratings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rating) });
+      // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
+      /*
+      await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'ratings', payload: rating }) });
       await syncDatabase();
+      */
+      
+      // --- SUPABASE BACKEND ---
+      if (supabaseClient) {
+          await supabaseClient.from('ratings').insert([rating]);
+          await syncDatabase();
+      }
   } catch(e) {}
   const ts=getTrustScore(name, catEl.value);
   const totalRatings=DB.ratings.filter(r=>r.target.toLowerCase()===name.toLowerCase()).length;
