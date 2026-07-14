@@ -501,12 +501,11 @@ function addTiles(map){L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/
 function scrollToTop(){window.scrollTo({top:0,left:0,behavior:'instant'});document.documentElement.scrollTop=0;}
 
 function showPage(id){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  const t=byId(id);if(t)t.classList.add('active');
-  const isLogin=id==='login-page';
-  byId('main-navbar').style.display=isLogin?'none':'flex';
-  byId('chat-wrap').style.display=isLogin?'none':'block';
-  scrollToTop();
+  const targetPage = id === 'login-page' ? 'index.html' : id.replace('-page', '.html');
+  const currentPath = window.location.pathname.split('/').pop() || 'index.html';
+  if (currentPath !== targetPage) {
+    window.location.href = targetPage;
+  }
 }
 
 function switchAuthTab(tab){
@@ -554,10 +553,16 @@ document.getElementById('login-form').addEventListener('submit',e=>{
 function afterLogin(un){
   const u=REGISTRY[un];
   APP.role=u.role;APP.user=un;APP.name=u.name;
-  byId('nav-uname').textContent=`${u.emoji} ${u.name}`;
-  // ✅ FIX 1: Use sessionStorage so session clears on page refresh/tab close
+  if(byId('nav-uname')) byId('nav-uname').textContent=`${u.emoji} ${u.name}`;
   sessionStorage.setItem('zh_session',un);
-  loadProfile();showPage('profile-page');scrollToTop();
+  loadProfile();
+  
+  const currentPath = window.location.pathname.split('/').pop() || 'index.html';
+  if (currentPath === 'index.html' || currentPath === '') {
+    showPage('profile-page');
+  }
+  
+  scrollToTop();
   history.replaceState({loggedIn:true},'','');
   toast(`Welcome back, ${u.name}!`,'ok');
   getUserLocation();
@@ -914,13 +919,31 @@ function closeModal(){const m=byId('modal-bg');if(m)m.remove();}
 document.addEventListener('DOMContentLoaded',()=>{
   window.addEventListener('popstate',()=>{if(APP.user){history.pushState({loggedIn:true},'','');}});
 
-  // ✅ FIX 1: Use sessionStorage — session is cleared when tab/browser is closed or page is refreshed
   const savedUser=sessionStorage.getItem('zh_session');
+  const currentPath = window.location.pathname.split('/').pop() || 'index.html';
+  
   if(savedUser&&REGISTRY[savedUser]){
     afterLogin(savedUser);
+    
+    // Initialize specific page logic based on current page
+    if(currentPath === 'donor.html'){ renderDonTbl(); initLiveMap('donor-map','donor'); }
+    else if(currentPath === 'request.html'){ initReqSection(); initLiveMap('req-map','req'); }
+    else if(currentPath === 'volunteer.html'){ initVolSection(); initLiveMap('vol-map','vol'); }
+    else if(currentPath === 'admin.html'){ initAdminDash(); }
+    else if(currentPath === 'details.html'){ 
+        APP.prevPage='admin-page'; 
+        renderDetailTables();
+        renderRatingsList();
+    }
   } else {
-    showPage('login-page');
+    if (currentPath !== 'index.html' && currentPath !== '') {
+      window.location.href = 'index.html';
+    }
   }
 
-  setInterval(()=>{if(byId('admin-page')?.classList.contains('active')&&byId('map')&&!APP.maps.admin)initAdminMap();},1000);
+  setInterval(()=>{
+    if(currentPath === 'admin.html' && byId('map') && !APP.maps.admin) {
+        initAdminMap();
+    }
+  },1000);
 });
