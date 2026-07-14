@@ -166,6 +166,23 @@
   </div>
 </nav>
 
+<div class="chat-wrap" id="chat-wrap">
+  <div class="chat-box" id="chat-box">
+    <div class="chat-head">
+      <h4>🤖 <span>Zero Hunger AI Assistant</span></h4>
+      <button class="x-btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="toggleChat()">✕</button>
+    </div>
+    <div class="chat-msgs" id="chat-msgs">
+      <div class="chat-msg bot">👋 Hello! I'm your Zero Hunger P2P AI assistant. Ask me about donations, requests, volunteers, trust scores, or routing!</div>
+    </div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Ask anything…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="chat-send" onclick="sendChat()">➤</button>
+    </div>
+  </div>
+  <button class="chat-toggle" onclick="toggleChat()" id="chat-toggle-btn" title="AI Assistant">🤖</button>
+</div>
+
 <div id="trust-page" class="page active">
   <div class="premium-dash">
     
