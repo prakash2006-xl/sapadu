@@ -901,7 +901,13 @@ function renderDonTbl(){
   }).join('');
 }
 
-function initReqSection(){renderP2PMatches();renderFridge();}
+function initReqSection(){
+    renderP2PMatches();
+    renderFridge();
+    setTimeout(() => {
+        if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
+    }, 100);
+}
 
 const requestForm = document.getElementById('request-form');
 if(requestForm) requestForm.addEventListener('submit', async e=>{
@@ -1224,6 +1230,9 @@ function initTrustDashboard() {
     }
     toggleTrustReqType();
     renderTrustDonations();
+    setTimeout(() => {
+        if(byId('treq-food-sel')) populateFoodDropdown('treq-food-sel');
+    }, 100);
 }
 
 function doCertUpload(file) {
@@ -1496,7 +1505,7 @@ function checkQuantityNegotiation(requestedQty, availableQty, targetUser, contex
 
 // Override Trust Form Submit
 const originalSubmitTrust = window.submitTrustRequest;
-window.submitTrustRequest = function(e) {
+window.submitTrustRequest = async function(e) {
     if (byId('treq-type').value === 'food') {
         e.preventDefault();
         const sel = byId('treq-food-sel');
@@ -1519,22 +1528,41 @@ window.submitTrustRequest = function(e) {
             reqQty = finalQty;
         }
         
-        DB.requests.push({
-            id: Date.now(),
+        // Find donation id
+        const donId = parseInt(sel.value);
+        let don = null;
+        if (!isNaN(donId)) {
+             don = DB.donations.find(d => d.id === donId);
+        }
+        
+        const req = {
             req_username: APP.user,
-            req_name: APP.name,
+            req_name: APP.name || 'Trust Organization',
             food_name: option.text.split(' by ')[0].replace('Default: ', ''),
             quantity: reqQty,
-            urgency: 'Medium',
-            priority_score: 50,
-            status: 'pending',
-            created_at: new Date().toISOString()
-        });
+            urgency: 'High', // Trusts usually have high urgency
+            priority_score: don ? priorityScore('High', don.expiry_days, don.freshness_score) : 80,
+            location_label: locInput.value.trim(),
+            distance_km: don ? getDonationDistance(don).toFixed(2) : "0.00",
+            status: 'pending'
+        };
+        
+        if (don) req.donation_id = donId;
+        
+        try {
+            if (supabaseClient) {
+                await supabaseClient.from('requests').insert([req]);
+                if (don) {
+                    await supabaseClient.from('donations').update({ status: 'requested' }).eq('id', don.donation_id || donId);
+                }
+                await syncDatabase();
+            }
+        } catch(err) { console.error('Trust Request Sync Error', err); }
+        
         toast('Food request submitted to the community!', 'ok');
         qtyInput.value = '';
         locInput.value = '';
-        saveDB();
-        renderTrustDonations();
+        if(typeof renderTrustDonations === 'function') renderTrustDonations();
         return;
     }
     
@@ -1608,11 +1636,4 @@ function sendDirectMessage(targetUser, contextType, contextId) {
     saveDB();
     renderDirectMessages(targetUser);
 }
-
-// Hook into initial loads
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        if(byId('treq-food-sel')) populateFoodDropdown('treq-food-sel');
-        if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
-    }, 500);
-});
+
