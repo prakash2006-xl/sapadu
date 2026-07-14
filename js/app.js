@@ -21,6 +21,23 @@ function saveDB(){
 }
 const DB = loadDB();
 
+async function syncDatabase() {
+    try {
+        const res = await fetch('/api/sync');
+        const data = await res.json();
+        if (data.success) {
+            DB.donations = data.data.donations || [];
+            DB.requests = data.data.requests || [];
+            DB.volunteers = data.data.volunteers || [];
+            DB.ratings = data.data.ratings || [];
+            saveDB();
+        }
+    } catch (e) {
+        console.error("Sync error:", e);
+    }
+}
+
+
 const APP={role:null,user:null,name:null,slot:null,maps:{},charts:{},userLat:null,userLng:null,userAccuracy:null,userAddress:null,geoWatchId:null,prevPage:'profile-page',routeLines:[],parkingState:null,selectedParkSlot:null,mobileNetModel:null,mobileNetLoading:false};
 
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -521,40 +538,76 @@ function switchAuthTab(tab){
 }
 function handleRoleChange(role){byId('su-admin-key-wrap').style.display=role==='admin'?'block':'none';}
 
-document.getElementById('signup-form').addEventListener('submit',e=>{
-  e.preventDefault();
-  const name=byId('su-name').value.trim(),age=+byId('su-age').value;
-  const email=byId('su-email').value.trim(),username=byId('su-user').value.trim().toLowerCase();
-  const phone=byId('su-phone').value.trim(),pw=byId('su-pw').value,pw2=byId('su-pw2').value;
-  const role=byId('su-role').value,adminKey=byId('su-admin-key').value;
-  byId('suerr').textContent='';
-  if(!name||!age||!email||!username||!pw){byId('suerr').textContent='All required fields must be filled.';return}
-  if(pw.length<6){byId('suerr').textContent='Password must be at least 6 characters.';return}
-  if(pw!==pw2){byId('suerr').textContent='Passwords do not match.';return}
-  if(REGISTRY[username]){byId('suerr').textContent='Username already taken.';return}
-  if(role==='admin'&&adminKey!==ADMIN_SECRET){byId('suerr').textContent='Invalid admin access key.';return}
-  const emoji=role==='admin'?'⚙️':'👤';
-  REGISTRY[username]={pw,role,name,age,email,phone,emoji};
-  saveRegistry();
-  toast(`Account created! Welcome, ${name} 🎉`,'ok');
-  afterLogin(username);
-});
+const signupForm = document.getElementById('signup-form');
+if (signupForm) {
+  signupForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const name=byId('su-name').value.trim(),age=+byId('su-age').value;
+    const email=byId('su-email').value.trim(),username=byId('su-user').value.trim().toLowerCase();
+    const phone=byId('su-phone').value.trim(),pw=byId('su-pw').value,pw2=byId('su-pw2').value;
+    const role=byId('su-role').value,adminKey=byId('su-admin-key').value;
+    const suerr=byId('suerr'); if(suerr) suerr.textContent='';
+    if(!name||!age||!email||!username||!pw){if(suerr)suerr.textContent='All required fields must be filled.';return}
+    if(pw.length<6){if(suerr)suerr.textContent='Password must be at least 6 characters.';return}
+    if(pw!==pw2){if(suerr)suerr.textContent='Passwords do not match.';return}
+    if(role==='admin'&&adminKey!==ADMIN_SECRET){if(suerr)suerr.textContent='Invalid admin access key.';return}
+    const emoji=role==='admin'?'⚙️':'👤';
+    
+    try {
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: pw, name, age, email, phone, role, emoji })
+      });
+      const data = await res.json();
+      if (data.success) {
+        REGISTRY[username]={pw,role,name,age,email,phone,emoji};
+        saveRegistry();
+        toast(`Account created! Welcome, ${name} 🎉`,'ok');
+        afterLogin(username);
+      } else {
+        if(suerr)suerr.textContent=data.message;
+      }
+    } catch (err) {
+      if(suerr)suerr.textContent='Server error. Could not sign up.';
+    }
+  });
+}
 
-document.getElementById('login-form').addEventListener('submit',e=>{
-  e.preventDefault();
-  const un=byId('lu').value.trim().toLowerCase(),pw=byId('lp').value.trim();
-  byId('lerr').textContent='';
-  if(!un||!pw){byId('lerr').textContent='Enter username and password.';return}
-  const u=REGISTRY[un];
-  if(!u||u.pw!==pw){byId('lerr').textContent='Invalid username or password.';return}
-  afterLogin(un);
-});
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const un=byId('lu').value.trim().toLowerCase(),pw=byId('lp').value.trim();
+    const lerr = byId('lerr'); if(lerr) lerr.textContent='';
+    if(!un||!pw){if(lerr)lerr.textContent='Enter username and password.';return}
+    
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: un, password: pw })
+      });
+      const data = await res.json();
+      if (data.success) {
+        REGISTRY[un] = data.user;
+        saveRegistry();
+        afterLogin(un);
+      } else {
+        if(lerr)lerr.textContent=data.message;
+      }
+    } catch (err) {
+      if(lerr)lerr.textContent='Server error. Could not log in.';
+    }
+  });
+}
 
-function afterLogin(un){
+async function afterLogin(un){
   const u=REGISTRY[un];
   APP.role=u.role;APP.user=un;APP.name=u.name;
   if(byId('nav-uname')) byId('nav-uname').textContent=`${u.emoji} ${u.name}`;
   sessionStorage.setItem('zh_session',un);
+  await syncDatabase();
   loadProfile();
   
   const currentPath = window.location.pathname.split('/').pop() || 'index.html';
@@ -581,26 +634,39 @@ function doLogout(){
 
 function loadProfile(){
   const u=REGISTRY[APP.user];if(!u)return;
-  byId('prof-avatar').textContent=u.emoji;byId('prof-name').textContent=APP.name;
-  byId('prof-role-lbl').textContent=APP.role==='admin'?'System Administrator':'Community Member';
-  byId('prof-stats').innerHTML=`
-    <div class="stat-card"><div class="stat-num">${DB.donations.length}</div><div class="stat-lbl">Donations</div></div>
-    <div class="stat-card"><div class="stat-num">${DB.requests.length}</div><div class="stat-lbl">Requests</div></div>
-    <div class="stat-card"><div class="stat-num">${DB.volunteers.length}</div><div class="stat-lbl">Volunteers</div></div>
-    <div class="stat-card"><div class="stat-num">91%</div><div class="stat-lbl">AI Score</div></div>`;
-  byId('prof-info-row').innerHTML=`
-    <span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">👤 ${APP.role}</span>
-    <span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">📅 ${new Date().toLocaleDateString('en-IN')}</span>
-    ${u.email?`<span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">✉️ ${esc(u.email)}</span>`:''}`;
+  if(byId('prof-avatar')) byId('prof-avatar').textContent=u.emoji;
+  if(byId('prof-name')) byId('prof-name').textContent=APP.name;
+  if(byId('prof-role-lbl')) byId('prof-role-lbl').textContent=APP.role==='admin'?'System Administrator':'Community Member';
+  
+  if(byId('prof-stats')) {
+    byId('prof-stats').innerHTML=`
+      <div class="stat-card"><div class="stat-num">${DB.donations.length}</div><div class="stat-lbl">Donations</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.requests.length}</div><div class="stat-lbl">Requests</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.volunteers.length}</div><div class="stat-lbl">Volunteers</div></div>
+      <div class="stat-card"><div class="stat-num">91%</div><div class="stat-lbl">AI Score</div></div>`;
+  }
+  
+  if(byId('prof-info-row')) {
+    byId('prof-info-row').innerHTML=`
+      <span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">👤 ${APP.role}</span>
+      <span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">📅 ${new Date().toLocaleDateString('en-IN')}</span>
+      ${u.email?`<span style="background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:.78rem">✉️ ${esc(u.email)}</span>`:''}`;
+  }
+  
   const mods=APP.role==='admin'
     ?[{k:'admin',ico:'⚙️',t:'Admin Dashboard',d:'Manage all data, charts, carbon impact, notifications and P2P maps.'},
       {k:'details',ico:'📋',t:'Detailed Records',d:'View all donor, receiver & volunteer records with trust scores.'}]
     :[{k:'donor',ico:'🎁',t:'Donor Module',d:'Donate food with TensorFlow MobileNet freshness scan & expiry prediction.'},
       {k:'request',ico:'📦',t:'Receiver Module (P2P)',d:'Request fresh food with AI proximity matching & community fridge.'},
       {k:'volunteer',ico:'🚗',t:'Micro-Volunteer Module',d:'Register as micro-volunteer with parking radar & smart routing.'}];
-  byId('prof-modules').innerHTML=mods.map(m=>`<div class="module-card" onclick="handleModClick('${m.k}')"><div class="mod-icon">${m.ico}</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:4px">${m.t}</h3><p style="font-size:.82rem;color:var(--txt2)">${m.d}</p></div>`).join('');
-  renderTrustCard();updateProfileCert();
-  setTimeout(()=>initMiniMap(),400);
+      
+  if(byId('prof-modules')) {
+    byId('prof-modules').innerHTML=mods.map(m=>`<div class="module-card" onclick="handleModClick('${m.k}')"><div class="mod-icon">${m.ico}</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:4px">${m.t}</h3><p style="font-size:.82rem;color:var(--txt2)">${m.d}</p></div>`).join('');
+  }
+  
+  renderTrustCard();
+  updateProfileCert();
+  initMiniMap();
   checkMicroVolunteerAlert();
 }
 
@@ -621,6 +687,7 @@ function initMiniMap(){
     const lat=APP.userLat||DEFAULT_LAT,lng=APP.userLng||DEFAULT_LNG;
     const m=L.map('mini-map',{zoomControl:false,attributionControl:false}).setView([lat,lng],13);
     addTiles(m);addAllMarkers(m);APP.maps.mini=m;
+    setTimeout(() => { m.invalidateSize(); }, 300);
   }catch(e){}
 }
 function getUserLocation(){
@@ -646,18 +713,17 @@ function initLiveMap(elId,prefix){
   const mapKey=prefix+'LiveMap';
   if(APP.maps[mapKey]){try{APP.maps[mapKey].remove()}catch(e){}delete APP.maps[mapKey];delete APP.maps[mapKey+'_marker'];delete APP.maps[mapKey+'_circle'];}
   const lat=APP.userLat||DEFAULT_LAT,lng=APP.userLng||DEFAULT_LNG;
-  setTimeout(()=>{
-    const el=byId(elId);if(!el)return;
-    try{
-      const m=L.map(elId,{attributionControl:false,zoomControl:true}).setView([lat,lng],17);
-      L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3'],maxZoom:20}).addTo(m);
-      APP.maps[mapKey]=m;
-      APP.maps[mapKey+'_circle']=L.circle([lat,lng],{radius:APP.userAccuracy||20,color:'#4285F4',fillColor:'#4285F4',fillOpacity:.15,weight:1.5}).addTo(m);
-      APP.maps[mapKey+'_marker']=L.marker([lat,lng],{icon:L.divIcon({html:`<div style="position:relative;width:22px;height:22px"><div style="position:absolute;inset:0;background:#4285F4;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(66,133,244,.6)"></div></div>`,className:'',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
-      const txtEl=byId(prefix+'-loc-txt');if(txtEl)txtEl.textContent=`📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
-      if(APP.userLat&&APP.userLng)updateAllLiveMarkers();
-    }catch(e){console.error(e);}
-  },300);
+  const el=byId(elId);if(!el)return;
+  try{
+    const m=L.map(elId,{attributionControl:false,zoomControl:true}).setView([lat,lng],17);
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3'],maxZoom:20}).addTo(m);
+    APP.maps[mapKey]=m;
+    APP.maps[mapKey+'_circle']=L.circle([lat,lng],{radius:APP.userAccuracy||20,color:'#4285F4',fillColor:'#4285F4',fillOpacity:.15,weight:1.5}).addTo(m);
+    APP.maps[mapKey+'_marker']=L.marker([lat,lng],{icon:L.divIcon({html:`<div style="position:relative;width:22px;height:22px"><div style="position:absolute;inset:0;background:#4285F4;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(66,133,244,.6)"></div></div>`,className:'',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
+    const txtEl=byId(prefix+'-loc-txt');if(txtEl)txtEl.textContent=`📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+    if(APP.userLat&&APP.userLng)updateAllLiveMarkers();
+    setTimeout(() => { m.invalidateSize(); }, 300);
+  }catch(e){console.error(e);}
 }
 
 const freshScore=(mfg,exp)=>{const now=new Date(),m=new Date(mfg),e=new Date(exp);const tot=(e-m)/86400000,rem=(e-now)/86400000;return Math.round(Math.max(0,Math.min(1,rem/tot))*100)/10;};
@@ -670,7 +736,8 @@ function togglePaySection(){
   byId('pay-online').style.display=v==='online'?'block':'none';
 }
 
-document.getElementById('donate-form').addEventListener('submit',e=>{
+const donateForm = document.getElementById('donate-form');
+if(donateForm) donateForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
   const donor_name=f.donor_name.value.trim(),donor_age=+f.donor_age.value;
   const food_name=f.food_name.value.trim(),qty=+f.quantity.value;
@@ -686,10 +753,12 @@ document.getElementById('donate-form').addEventListener('submit',e=>{
   if(pay_type==='online')payInfo=`Online ₹${f.onl_amount.value||'?'} via ${f.onl_mode.value} (${f.onl_txn.value||'no txn'})`;
   const foodType=currentFoodType||classifyFood(food_name)?.type||'raw';
   const latOff=(Math.random()-0.5)*0.05,lngOff=(Math.random()-0.5)*0.05;
-  const d={id:DB.nid.don++,donor_name,donor_age,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available',created_at:new Date().toISOString()};
-  DB.donations.push(d);
-  DB.notifications.push({id:DB.nid.notif++,message:`New donation: ${food_name} (${qty} units) by ${donor_name}`,food_name,quantity:qty,urgency:'Low',priority_score:null,is_read:'0',created_at:new Date().toISOString()});
-  saveDB();updateNotifBadge();
+  const d={donor_username: APP.user, donor_name,donor_age,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
+  try {
+      await fetch('/api/donations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
+      await syncDatabase();
+  } catch(e) {}
+  updateNotifBadge();
   const typeInfo=FOOD_DB[foodType];
   byId('don-ai-res').innerHTML=`<div class="ai-box"><div class="ai-dot">✅ Donation Accepted — P2P Network Live</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;text-align:center"><div><div style="font-size:.68rem;opacity:.7">Food Type</div><div style="font-size:1.2rem;margin-top:4px">${typeInfo.icon}</div><div style="font-size:.72rem;font-weight:700;color:#22c55e;margin-top:2px">${typeInfo.label}</div></div><div><div style="font-size:.68rem;opacity:.7">Freshness</div><div style="font-size:1.6rem;font-weight:800;color:#22c55e">${fresh}<small>/10</small></div></div><div><div style="font-size:.68rem;opacity:.7">Expiry</div><div style="font-size:1.6rem;font-weight:800;color:#22c55e">${days}<small>d</small></div></div><div><div style="font-size:.68rem;opacity:.7">Payment</div><div style="font-size:.85rem;font-weight:700;color:#2dd4bf;margin-top:6px">${pay_type==='physical'?'💵 Cash':'💳 Online'}</div></div></div></div>`;
   toast(`Donation submitted! ${typeInfo.icon} ${typeInfo.label} — Freshness: ${fresh}/10`,'ok');
@@ -714,7 +783,8 @@ function renderDonTbl(){
 
 function initReqSection(){renderP2PMatches();renderFridge();}
 
-document.getElementById('request-form').addEventListener('submit',e=>{
+const requestForm = document.getElementById('request-form');
+if(requestForm) requestForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
   const req_name=f.req_name.value.trim(),req_age=+f.req_age.value;
   if(!req_name||!req_age){toast('Name and age required','err');return}
@@ -724,12 +794,14 @@ document.getElementById('request-form').addEventListener('submit',e=>{
   const don=DB.donations.find(d=>d.id===donId);if(!don){toast('Food not found','err');return}
   const urg=f.req_urgency.value,req_loc=f.req_loc.value.trim();if(!req_loc){toast('Enter your location','err');return}
   const pri=priorityScore(urg,don.expiry_days,don.freshness_score);const dist=getDonationDistance(don);
-  const req={id:DB.nid.req++,req_name,req_age,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending',created_at:new Date().toISOString()};
-  DB.requests.push(req);don.status='requested';
+  const req={req_username: APP.user, req_name,req_age,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
+  try {
+      await fetch('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+      await syncDatabase();
+  } catch(e) {}
   byId('req-pri-preview').innerHTML=`<div style="padding:10px;background:#dbeafe;border-radius:8px;color:#1e40af;font-size:.84rem">🤖 Priority: <strong>${pri}/100</strong> · Distance: <strong>${dist.toFixed(2)} km</strong></div>`;
   byId('req-confirm').innerHTML=`<div class="notif-item" style="background:var(--g5);border-color:var(--g2)"><div class="notif-t">✅ P2P Request Confirmed</div><div class="notif-m">Priority: ${pri}/100 · ${dist.toFixed(2)} km away</div></div>`;
-  DB.notifications.push({id:DB.nid.notif++,message:`P2P Request: ${don.food_name} by ${req_name}`,food_name:don.food_name,quantity:qty,urgency:urg,priority_score:pri,is_read:'0',created_at:new Date().toISOString()});
-  saveDB();updateNotifBadge();toast(`Request submitted! Priority: ${pri}/100`,'ok');
+  updateNotifBadge();toast(`Request submitted! Priority: ${pri}/100`,'ok');
   f.reset();initReqSection();checkMicroVolunteerAlert();updateCarbonMetrics();
 });
 
@@ -746,7 +818,8 @@ function renderVolDonors(){
   tb.innerHTML=sorted.map(d=>{const ts=getTrustScore(d.donor_name,'donor');return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${d.donor_age}</td><td>${esc(d.food_name)}</td><td>${d.quantity}</td><td>${getDistBadge(d.dist)}</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td></tr>`;}).join('');
 }
 
-document.getElementById('vol-form').addEventListener('submit',e=>{
+const volForm = document.getElementById('vol-form');
+if(volForm) volForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
   const vol_name=f.vol_name.value.trim(),vol_age=+f.vol_age.value;
   if(!vol_name||!vol_age){toast('Name and age required','err');return}
@@ -754,9 +827,11 @@ document.getElementById('vol-form').addEventListener('submit',e=>{
   const vol_pickup=f.vol_pickup.value.trim();if(!vol_pickup){toast('Enter your pickup location','err');return}
   const pending=DB.requests.filter(r=>r.status==='pending').sort((a,b)=>+b.priority_score-+a.priority_score);
   const assigned=pending.length>0,aReq=pending[0];
-  DB.volunteers.push({id:DB.nid.vol++,vol_name,vol_age,vehicle_type:f.vehicle_type.value,pickup_location:vol_pickup,shift:f.shift_sel.value,time_slot:APP.slot,status:assigned?'busy':'active',created_at:new Date().toISOString()});
-  if(assigned&&aReq)aReq.status='assigned';
-  saveDB();
+  const vol = {vol_username: APP.user, vol_name,vol_age,vehicle_type:f.vehicle_type.value,pickup_location:vol_pickup,shift:f.shift_sel.value,time_slot:APP.slot,status:assigned?'busy':'active', assigned_req_id: assigned ? aReq.id : null};
+  try {
+      await fetch('/api/volunteers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vol) });
+      await syncDatabase();
+  } catch(e) {}
   const ar=byId('agent-res');
   if(assigned&&aReq){ar.innerHTML=`<div class="agent-res"><div style="font-size:2rem;margin-bottom:8px">🤖</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:6px">AI Assignment Complete</h3><p style="opacity:.8;font-size:.84rem">Deliver to: <strong>${esc(aReq.location_label||'See request details')}</strong></p><p style="font-size:.84rem;margin-top:4px">Priority: <strong>${aReq.priority_score}/100</strong></p></div>`;byId('smart-route-section').style.display='block';toast('🤖 AI assigned you to a delivery!','ok');}
   else{ar.innerHTML=`<div class="agent-res"><h3 style="font-size:1rem;font-weight:700">✅ Registered!</h3><p style="margin-top:6px;font-size:.84rem;opacity:.8">No pending requests. You'll be notified when one arrives.</p></div>`;toast('Registered as micro-volunteer!','ok');}
@@ -801,7 +876,13 @@ function mkChart(id,type,data){const c=byId(id);if(!c)return;if(APP.charts[id])A
 function initAdminMap(){
   const el=byId('map');if(!el)return;
   if(APP.maps.admin){try{APP.maps.admin.remove()}catch(e){}APP.maps.admin=null}
-  try{const m=L.map('map',{attributionControl:true}).setView([DEFAULT_LAT,DEFAULT_LNG],13);addTiles(m);APP.maps.admin=m;loadMarkers('all');}catch(e){}
+  try{
+    const m=L.map('map',{attributionControl:true}).setView([DEFAULT_LAT,DEFAULT_LNG],13);
+    addTiles(m);
+    APP.maps.admin=m;
+    loadMarkers('all');
+    setTimeout(() => { m.invalidateSize(); }, 300);
+  }catch(e){}
 }
 function addAllMarkers(m){
   if(!DB.donations.length)return;
@@ -831,14 +912,16 @@ function goDetails(){
   renderRatingsList();
 }
 
-function submitRating(){
+async function submitRating(){
   const nameEl=byId('rt-name'),catEl=byId('rt-cat'),scoreEl=byId('rt-score'),reviewEl=byId('rt-review');
   if(!nameEl||!catEl||!scoreEl||!reviewEl)return;
   const name=nameEl.value.trim();
   if(!name){toast('Please enter a name.','err');nameEl.focus();return;}
-  const rating={target:name,category:catEl.value,score:+scoreEl.value,review:reviewEl.value.trim(),created_at:new Date().toISOString()};
-  DB.ratings.push(rating);
-  saveDB();
+  const rating={target_username: APP.user, target:name,category:catEl.value,score:+scoreEl.value,review:reviewEl.value.trim()};
+  try {
+      await fetch('/api/ratings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rating) });
+      await syncDatabase();
+  } catch(e) {}
   const ts=getTrustScore(name, catEl.value);
   const totalRatings=DB.ratings.filter(r=>r.target.toLowerCase()===name.toLowerCase()).length;
   const previewEl=byId('rating-success-preview');
@@ -916,14 +999,14 @@ function openNotifModal(){showModal(`<div class="modal-head"><span class="modal-
 function showModal(html){const o=document.createElement('div');o.className='modal-bg';o.id='modal-bg';o.innerHTML=`<div class="modal-box">${html}</div>`;o.addEventListener('click',ev=>{if(ev.target===o)closeModal();});document.body.appendChild(o);}
 function closeModal(){const m=byId('modal-bg');if(m)m.remove();}
 
-document.addEventListener('DOMContentLoaded',()=>{
+document.addEventListener('DOMContentLoaded', async ()=>{
   window.addEventListener('popstate',()=>{if(APP.user){history.pushState({loggedIn:true},'','');}});
 
   const savedUser=sessionStorage.getItem('zh_session');
   const currentPath = window.location.pathname.split('/').pop() || 'index.html';
   
   if(savedUser&&REGISTRY[savedUser]){
-    afterLogin(savedUser);
+    await afterLogin(savedUser);
     
     // Initialize specific page logic based on current page
     if(currentPath === 'donor.html'){ renderDonTbl(); initLiveMap('donor-map','donor'); }
