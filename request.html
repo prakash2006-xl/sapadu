@@ -73,7 +73,12 @@
             <div id="req-dist-preview" style="margin-bottom:10px"></div>
             <div class="fg"><label>Quantity Needed *</label><input name="req_qty" type="number" min="1" placeholder="e.g. 10" required></div>
             <div class="fg"><label>Urgency</label><select name="req_urgency"><option value="Low">🟡 Low</option><option value="High">🔴 High</option></select></div>
-            <div class="fg"><label>Your Location *</label><input name="req_loc" placeholder="e.g. KK Nagar, Madurai" required></div>
+            <div class="fg"><label>Your Location *</label>
+              <div style="display:flex;gap:10px">
+                <input name="req_loc" placeholder="e.g. KK Nagar, Madurai" required style="flex:1">
+                <button type="button" class="btn btn-outline" style="width:auto" onclick="autoFillReqLocation()" title="Auto Detect Location">📍</button>
+              </div>
+            </div>
             <div id="req-pri-preview" style="margin-bottom:10px"></div>
             <button type="submit" class="btn btn-primary btn-full">📤 Submit Request</button>
           </form>

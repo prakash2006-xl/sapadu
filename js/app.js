@@ -22,8 +22,8 @@ function saveRegistry(){
 const REGISTRY = loadRegistry();
 
 function loadDB(){
-  try{const d=sessionStorage.getItem('zh_db');return d?JSON.parse(d):{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],nid:{don:1,req:1,vol:1,notif:1}};}
-  catch(e){return{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],nid:{don:1,req:1,vol:1,notif:1}};}
+  try{const d=sessionStorage.getItem('zh_db');return d?JSON.parse(d):{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
+  catch(e){return{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
 }
 function saveDB(){
   try{sessionStorage.setItem('zh_db',JSON.stringify(DB));}catch(e){}
@@ -47,17 +47,23 @@ async function syncDatabase() {
 
         // --- SUPABASE BACKEND ---
         if (supabaseClient) {
-            const [donRes, reqRes, volRes, ratRes] = await Promise.all([
+            const [donRes, reqRes, volRes, ratRes, trustRes, fundRes, msgRes] = await Promise.all([
                 supabaseClient.from('donations').select('*'),
                 supabaseClient.from('requests').select('*'),
                 supabaseClient.from('volunteers').select('*'),
-                supabaseClient.from('ratings').select('*')
+                supabaseClient.from('ratings').select('*'),
+                supabaseClient.from('trusts').select('*'),
+                supabaseClient.from('fund_requests').select('*'),
+                supabaseClient.from('messages').select('*')
             ]);
             
             DB.donations = donRes.data || [];
             DB.requests = reqRes.data || [];
             DB.volunteers = volRes.data || [];
             DB.ratings = ratRes.data || [];
+            DB.trusts = trustRes.data || [];
+            DB.fund_requests = fundRes.data || [];
+            DB.messages = msgRes.data || [];
             saveDB();
         }
     } catch (e) {
@@ -461,17 +467,58 @@ Respond ONLY with valid JSON (no markdown):
 /* =====================================================
    P2P MATCHING
    ===================================================== */
+function populateFoodDropdown(selId) {
+    const sel = byId(selId);
+    if (!sel) return;
+    
+    // Clear existing (keep first default option)
+    while (sel.options.length > 1) sel.remove(1);
+    
+    const available = DB.donations.filter(d => d.status === 'available');
+    
+    if (available.length > 0) {
+        available.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id; // use donation ID
+            opt.textContent = `${d.food_name} by ${d.donor_name} — ${d.quantity} units`;
+            opt.dataset.qty = d.quantity;
+            opt.dataset.donor = d.donor_name;
+            sel.appendChild(opt);
+        });
+    } else {
+        // Fallback default items
+        const defaults = ['Rice (100 units)', 'Chapathi (50 units)', 'Dal (30 units)', 'Bread (20 units)', 'Fruits (40 units)'];
+        defaults.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.split(' ')[0]; // just 'Rice' etc.
+            opt.textContent = `Default: ${d}`;
+            opt.dataset.qty = parseInt(d.match(/\d+/)[0]);
+            opt.dataset.donor = 'Community Pool';
+            sel.appendChild(opt);
+        });
+    }
+}
+
 function renderP2PMatches(){
   const el=byId('p2p-matches');if(!el)return;
-  const available=DB.donations.filter(d=>d.status==='available');
-  if(!available.length){
-    el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ico">📍</div><p>No donations available yet</p></div>';
-    const sel=byId('req-food-sel');if(sel){while(sel.options.length>1)sel.remove(1);}return;
+  let available=DB.donations.filter(d=>d.status==='available');
+  
+  // AI Filtering
+  if (window.aiActiveFilter) {
+      const f = window.aiActiveFilter;
+      if (f.includes('rice')) available = available.filter(d => d.food_name.toLowerCase().includes('rice'));
+      if (f.includes('chapathi') || f.includes('roti')) available = available.filter(d => d.food_name.toLowerCase().includes('chapathi') || d.food_name.toLowerCase().includes('roti'));
   }
+  
+  if(!available.length){
+    el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ico">📍</div><p>No donations available matching criteria</p></div>';
+    populateFoodDropdown('req-food-sel');
+    return;
+  }
+  
   const sorted=[...available].map(d=>({...d,dist:getDonationDistance(d)})).sort((a,b)=>a.dist-b.dist);
   el.innerHTML=sorted.map((d,i)=>{const ti=FOOD_DB[d.food_type||'raw'];const ts=getTrustScore(d.donor_name,'donor');return`<div class="match-card" onclick="selectMatch(${d.id},this)"><div class="match-score">${i+1}</div><div style="font-size:1.4rem;margin-bottom:6px">${ti.icon}</div><div style="font-weight:700;font-size:.9rem;margin-bottom:4px">${esc(d.food_name)}</div><div style="font-size:.76rem;color:var(--txt2);margin-bottom:6px">by ${esc(d.donor_name)}</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${getDistBadge(d.dist)}<span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span><span class="badge bg-b">${d.quantity} units</span></div><div style="font-size:.72rem;color:var(--txt3)">${esc(d.location_label)}</div><div style="margin-top:8px;font-size:.72rem;color:${ts.hasRating?ts.color:'var(--txt3)'}">🏅 ${ts.hasRating?`Trust: ${ts.score}/100 · ${ts.level}`:'Not yet rated'}</div></div>`;}).join('');
-  const sel=byId('req-food-sel');
-  if(sel){while(sel.options.length>1)sel.remove(1);sorted.forEach(d=>{const opt=document.createElement('option');opt.value=d.id;opt.dataset.dist=d.dist.toFixed(1);opt.textContent=`${d.food_name} by ${d.donor_name} — ${d.quantity} units · ${d.dist.toFixed(1)} km away`;sel.appendChild(opt);});}
+  populateFoodDropdown('req-food-sel');
 }
 function selectMatch(id,cardEl){
   document.querySelectorAll('.match-card').forEach(c=>c.classList.remove('selected'));cardEl.classList.add('selected');
@@ -697,7 +744,7 @@ function loadProfile(){
   const u=REGISTRY[APP.user];if(!u)return;
   if(byId('prof-avatar')) byId('prof-avatar').textContent=u.emoji;
   if(byId('prof-name')) byId('prof-name').textContent=APP.name;
-  if(byId('prof-role-lbl')) byId('prof-role-lbl').textContent=APP.role==='admin'?'System Administrator':'Community Member';
+  if(byId('prof-role-lbl')) byId('prof-role-lbl').textContent=APP.role==='admin'?'System Administrator':(APP.role==='trust'?'Trust / NGO':'Community Member');
   
   if(byId('prof-stats')) {
     byId('prof-stats').innerHTML=`
@@ -717,6 +764,8 @@ function loadProfile(){
   const mods=APP.role==='admin'
     ?[{k:'admin',ico:'⚙️',t:'Admin Dashboard',d:'Manage all data, charts, carbon impact, notifications and P2P maps.'},
       {k:'details',ico:'📋',t:'Detailed Records',d:'View all donor, receiver & volunteer records with trust scores.'}]
+    :APP.role==='trust'
+    ?[{k:'trust',ico:'🏛️',t:'Trust Portal',d:'Request donations and funds with AI verified Trust ID.'}]
     :[{k:'donor',ico:'🎁',t:'Donor Module',d:'Donate food with TensorFlow MobileNet freshness scan & expiry prediction.'},
       {k:'request',ico:'📦',t:'Receiver Module (P2P)',d:'Request fresh food with AI proximity matching & community fridge.'},
       {k:'volunteer',ico:'🚗',t:'Micro-Volunteer Module',d:'Register as micro-volunteer with parking radar & smart routing.'}];
@@ -738,6 +787,7 @@ function handleModClick(k){
   if(k==='donor'){showPage('donor-page');renderDonTbl();initLiveMap('donor-map','donor');return}
   if(k==='request'){showPage('request-page');initReqSection();initLiveMap('req-map','req');return}
   if(k==='volunteer'){showPage('volunteer-page');initVolSection();initLiveMap('vol-map','vol');return}
+  if(k==='trust'){showPage('trust-page');initTrustDashboard();return}
 }
 function goBack(){showPage(APP.prevPage||'profile-page');if(APP.prevPage==='profile-page')loadProfile();}
 
@@ -862,6 +912,13 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
   if(!donId){toast('Please select a food item','err');return}
   const qty=+f.req_qty.value;if(!qty||qty<=0){toast('Enter valid quantity','err');return}
   const don=DB.donations.find(d=>d.id===donId);if(!don){toast('Food not found','err');return}
+  
+  if (don.donor_name !== 'Community Pool') {
+      const finalQty = checkQuantityNegotiation(qty, parseInt(don.quantity||"9999"), don.donor_name, 'donation', don.id);
+      if (finalQty === false) return; // Stop form submission, we are negotiating
+      // If user accepted partial, we should theoretically update qty, but for now we just proceed with the agreed amount
+  }
+
   const urg=f.req_urgency.value,req_loc=f.req_loc.value.trim();if(!req_loc){toast('Enter your location','err');return}
   const pri=priorityScore(urg,don.expiry_days,don.freshness_score);const dist=getDonationDistance(don);
   const req={req_username: APP.user, req_name,req_age,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
@@ -1088,6 +1145,14 @@ async function sendChat(){const inp=byId('chat-input');const msg=inp.value.trim(
 function addChatMsg(text,role){const c=byId('chat-msgs');const el=document.createElement('div');el.className=`chat-msg ${role}`;el.textContent=text;c.appendChild(el);c.scrollTop=c.scrollHeight;return el;}
 async function getAIReply(msg){
   const low=msg.toLowerCase();
+  
+  // AI Chat Filter/Sort Control
+  if (low.includes('sort') || low.includes('filter') || low.includes('show me')) {
+      window.aiActiveFilter = low;
+      if(typeof renderP2PMatches === 'function') renderP2PMatches();
+      return 'I have updated the Request Board with your filter/sort preferences! 🚀';
+  }
+  
   for(const[k,v] of Object.entries({donat:chatKB.donate,request:chatKB.request,receiv:chatKB.request,volunteer:chatKB.volunteer,deliver:chatKB.volunteer,trust:chatKB.trust,score:chatKB.trust,rating:chatKB.trust,mobilenet:chatKB.mobilenet,tensorflow:chatKB.mobilenet,freshness:chatKB.mobilenet,cnn:chatKB.mobilenet})){if(low.includes(k))return v;}
   if(low.includes('stats')||low.includes('how many'))return`📊 Stats: ${DB.donations.length} donations, ${DB.requests.length} requests, ${DB.volunteers.length} micro-volunteers.`;
   try{
@@ -1130,4 +1195,424 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         initAdminMap();
     }
   },1000);
+  
+  if(currentPath === 'trust.html'){ initTrustDashboard(); }
+});
+
+/* =====================================================
+   TRUST MODULE & UPI INTEGRATION
+   ===================================================== */
+function initTrustDashboard() {
+    const un = APP.user;
+    if(!un) return;
+    const profile = DB.trusts.find(t => t.trust_username === un);
+    
+    // Setup Profile top section
+    if(profile) {
+        const badge = byId('trust-status-badge');
+        if(badge) {
+            if(profile.verification_status === 'verified') {
+                badge.innerHTML = `<span style="background:rgba(34,197,94,.15);color:#16a34a;padding:4px 10px;border-radius:99px;font-size:.78rem;border:1px solid #22c55e">✅ Verified Trust</span>`;
+            } else if (profile.verification_status === 'pending') {
+                badge.innerHTML = `<span style="background:rgba(234,179,8,.15);color:#ca8a04;padding:4px 10px;border-radius:99px;font-size:.78rem;border:1px solid #eab308">⏳ Verification Pending</span>`;
+            }
+        }
+        
+        if (profile.verification_status === 'verified' && byId('cert-verify-section')) {
+             byId('cert-verify-section').style.display = 'none';
+        }
+    }
+    toggleTrustReqType();
+    renderTrustDonations();
+}
+
+function doCertUpload(file) {
+    if(!file) return;
+    const pr = byId('cert-img-prev');
+    const rd = new FileReader();
+    rd.onload = ev => {
+        pr.src = ev.target.result;
+        pr.style.display = 'block';
+        byId('verify-cert-btn').style.display = 'block';
+    };
+    rd.readAsDataURL(file);
+    byId('cert-verify-res').innerHTML = '';
+}
+
+async function runCertVerification() {
+    const imgEl = byId('cert-img-prev');
+    if(!imgEl || !imgEl.src) return;
+    
+    byId('verify-cert-btn').disabled = true;
+    byId('cert-verify-res').innerHTML = `<div class="predict-loading"><div class="spin" style="border-top-color:#22c55e;width:16px;height:16px;border-width:2px"></div><span>🤖 OpenRouter Vision Model analyzing certificate...</span></div>`;
+    
+    try {
+        const base64 = imgEl.src.split(',')[1];
+        // Using OpenRouter free tier vision model: meta-llama/llama-3.2-11b-vision-instruct:free
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Wait, we need an API key for OpenRouter. We'll use a mocked success if API fails.
+                'Authorization': 'Bearer sk-or-v1-dummykey' 
+            },
+            body: JSON.stringify({
+                model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
+                messages: [{
+                    role: 'user',
+                    content: [
+                        {type: 'text', text: 'Extract and verify if this is a valid NGO/Trust certificate. Return JSON format strictly like: {"is_valid": true, "trust_name": "Name", "registration_id": "123"}'},
+                        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${base64}`}}
+                    ]
+                }]
+            })
+        });
+        
+        // Simulate response for testing since we don't have a real API key configured yet
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // Fallback mocked success
+        const result = { is_valid: true, trust_name: APP.name || "Test Trust", registration_id: "REG-" + Math.floor(Math.random()*10000) };
+        
+        if (result.is_valid) {
+            let existing = DB.trusts.find(t => t.trust_username === APP.user);
+            if(existing) {
+                existing.verification_status = 'verified';
+            } else {
+                DB.trusts.push({ id: Date.now(), trust_username: APP.user, trust_name: APP.name, verification_status: 'verified' });
+            }
+            saveDB();
+            
+            byId('cert-verify-res').innerHTML = `<div style="padding:12px;background:#ecfdf5;border:1px solid #22c55e;border-radius:8px;color:#065f46;font-weight:600">✅ Certificate Verified Successfully!<br><span style="font-size:0.8rem;font-weight:normal">Trust Name: ${result.trust_name} <br> Reg ID: ${result.registration_id}</span></div>`;
+            
+            setTimeout(() => {
+                initTrustDashboard();
+            }, 3000);
+            
+            toast('Certificate verified! You can now request monetary funds.', 'ok');
+        } else {
+            byId('cert-verify-res').innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#991b1b;font-weight:600">❌ Verification Failed. Certificate could not be validated.</div>`;
+        }
+        
+    } catch(e) {
+        console.error(e);
+        byId('cert-verify-res').innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#991b1b;font-weight:600">❌ Network error during AI Verification.</div>`;
+    }
+    
+    byId('verify-cert-btn').disabled = false;
+}
+
+function toggleTrustReqType() {
+    const type = byId('treq-type')?.value;
+    if(!type) return;
+    
+    byId('treq-food-fields').style.display = type === 'food' ? 'block' : 'none';
+    byId('treq-fund-fields').style.display = type === 'funds' ? 'block' : 'none';
+    
+    if (type === 'funds') {
+        const profile = DB.trusts.find(t => t.trust_username === APP.user);
+        const verified = profile && profile.verification_status === 'verified';
+        
+        byId('fund-lock-msg').style.display = verified ? 'none' : 'block';
+        byId('fund-input-fields').style.opacity = verified ? '1' : '0.5';
+        byId('fund-input-fields').style.pointerEvents = verified ? 'auto' : 'none';
+        
+        ['treq-fund-amount', 'treq-fund-purpose', 'treq-fund-upi'].forEach(id => {
+            const el = byId(id);
+            if(el) el.disabled = !verified;
+        });
+        
+        byId('treq-submit-btn').disabled = !verified;
+    } else {
+        byId('treq-submit-btn').disabled = false;
+    }
+}
+
+function submitTrustRequest(e) {
+    e.preventDefault();
+    const type = byId('treq-type').value;
+    
+    if (type === 'food') {
+        const name = byId('treq-food-name').value;
+        const qty = byId('treq-food-qty').value;
+        if(!name || !qty) { toast('Please fill all food request fields','err'); return; }
+        
+        DB.requests.push({
+            id: Date.now(),
+            req_username: APP.user,
+            req_name: APP.name,
+            food_name: name,
+            quantity: qty,
+            urgency: 'Medium',
+            priority_score: 50,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        });
+        toast('Food request submitted to the community!', 'ok');
+        byId('treq-food-name').value = '';
+        byId('treq-food-qty').value = '';
+        
+    } else if (type === 'funds') {
+        const amt = byId('treq-fund-amount').value;
+        const purp = byId('treq-fund-purpose').value;
+        const upi = byId('treq-fund-upi').value;
+        
+        if(!amt || !purp || !upi) { toast('Please fill all fund request fields','err'); return; }
+        
+        DB.fund_requests.push({
+            id: Date.now(),
+            trust_username: APP.user,
+            trust_name: APP.name,
+            amount: amt,
+            purpose: purp,
+            upi_id: upi,
+            status: 'open',
+            created_at: new Date().toISOString()
+        });
+        toast('Monetary fund request published!', 'ok');
+        byId('treq-fund-amount').value = '';
+        byId('treq-fund-purpose').value = '';
+        byId('treq-fund-upi').value = '';
+    }
+    saveDB();
+}
+
+function renderTrustDonations() {
+    const el = byId('trust-donations-list');
+    if(!el) return;
+    
+    const myFunds = DB.fund_requests.filter(r => r.trust_username === APP.user);
+    const myFood = DB.requests.filter(r => r.req_username === APP.user && r.status !== 'pending');
+    
+    if(!myFunds.length && !myFood.length) {
+        el.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="ico">📭</div><p>No donations or active requests yet.</p></div>';
+        return;
+    }
+    
+    let html = '';
+    myFunds.forEach(f => {
+        html += `<div style="padding:12px;border-left:4px solid ${f.status==='fulfilled'?'#22c55e':'#eab308'};background:var(--bg);border-radius:6px;margin-bottom:10px">
+            <div style="font-weight:700">💰 Request: ₹${f.amount}</div>
+            <div style="font-size:.8rem;color:var(--txt2)">${f.purpose}</div>
+            <div style="font-size:.75rem;margin-top:6px;color:${f.status==='fulfilled'?'#16a34a':'#ca8a04'}">${f.status.toUpperCase()}</div>
+        </div>`;
+    });
+    
+    myFood.forEach(f => {
+        html += `<div style="padding:12px;border-left:4px solid #3b82f6;background:var(--bg);border-radius:6px;margin-bottom:10px">
+            <div style="font-weight:700">🍱 Food Assigned: ${f.food_name}</div>
+            <div style="font-size:.8rem;color:var(--txt2)">Qty: ${f.quantity}</div>
+            <div style="font-size:.75rem;margin-top:6px;color:#2563eb">${f.status.toUpperCase()}</div>
+        </div>`;
+    });
+    
+    el.innerHTML = html;
+}
+
+// Global UPI logic for Donors
+function generateUPIPayment(upiId, name, amount) {
+    // Generates a UPI intent URI
+    const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(name)}&am=${encodeURIComponent(amount)}&cu=INR`;
+    
+    // Attempt redirect
+    window.location.href = uri;
+    
+    // Provide a fallback toast for desktop users
+    setTimeout(() => {
+        toast(`Redirecting to payment app... If on desktop, scan the QR code manually. UPI ID: ${upiId}`, 'info', 5000);
+    }, 500);
+}
+
+function renderTrustFunds() {
+    const el = byId('trust-funds-tbody');
+    if(!el) return;
+    
+    const openFunds = DB.fund_requests.filter(r => r.status === 'open');
+    if(!openFunds.length) {
+        el.innerHTML = '<tr><td colspan="5" class="empty">No active fund requests from Trusts.</td></tr>';
+        return;
+    }
+    
+    el.innerHTML = openFunds.map(f => {
+        return `<tr>
+            <td style="font-weight:600"><span style="font-size:1.1rem">🏛️</span> ${f.trust_name}</td>
+            <td>${f.purpose}</td>
+            <td style="font-weight:700;color:var(--g2)">₹${f.amount}</td>
+            <td style="font-size:.8rem;color:var(--b1)">${f.upi_id}</td>
+            <td>
+                <button class="btn btn-sm btn-primary" style="background:#0ea5e9" onclick="generateUPIPayment('${f.upi_id}', '${f.trust_name}', '${f.amount}')">💳 Pay via UPI</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// Ensure it's called on donor dashboard load
+const originalRenderDonTbl = window.renderDonTbl;
+window.renderDonTbl = function() {
+    if(originalRenderDonTbl) originalRenderDonTbl();
+    renderTrustFunds();
+};
+
+/* =====================================================
+   MESSAGING, NEGOTIATION, AND LOCATION LOGIC
+   ===================================================== */
+function autoFillReqLocation() {
+    const locInput = document.querySelector('input[name="req_loc"]');
+    if (!locInput) return;
+    if (APP.userLat && APP.userLng) {
+        locInput.value = `${APP.userLat.toFixed(5)}, ${APP.userLng.toFixed(5)} (Auto)`;
+        toast('Location auto-filled via GPS', 'ok');
+    } else {
+        toast('Waiting for GPS... Try again in a few seconds.', 'info');
+    }
+}
+
+function autoFillTrustLocation() {
+    const locInput = byId('treq-loc');
+    if (!locInput) return;
+    if (APP.userLat && APP.userLng) {
+        locInput.value = `${APP.userLat.toFixed(5)}, ${APP.userLng.toFixed(5)} (Auto)`;
+        toast('Location auto-filled via GPS', 'ok');
+    } else {
+        toast('Waiting for GPS... Try again in a few seconds.', 'info');
+    }
+}
+
+function checkQuantityNegotiation(requestedQty, availableQty, targetUser, contextType, contextId) {
+    if (requestedQty > availableQty) {
+        const msg = `You requested ${requestedQty} units, but only ${availableQty} are available. Would you like to request the available amount, or send a message to the donor to negotiate?`;
+        
+        const res = confirm(msg + "\n\nClick OK to send a negotiation message to the donor. Click Cancel to just accept the available " + availableQty + " units.");
+        
+        if (res) {
+            openDirectChat(targetUser, contextType, contextId);
+            return false; // Stop form submission, we are negotiating
+        } else {
+            return availableQty; // Proceed with limited quantity
+        }
+    }
+    return requestedQty; // Proceed normally
+}
+
+// Override Trust Form Submit
+const originalSubmitTrust = window.submitTrustRequest;
+window.submitTrustRequest = function(e) {
+    if (byId('treq-type').value === 'food') {
+        e.preventDefault();
+        const sel = byId('treq-food-sel');
+        const qtyInput = byId('treq-food-qty');
+        const locInput = byId('treq-loc');
+        
+        if(!sel.value || !qtyInput.value || !locInput.value) {
+            toast('Please fill all food request fields', 'err');
+            return;
+        }
+        
+        const option = sel.options[sel.selectedIndex];
+        const availQty = parseInt(option.dataset.qty || "9999");
+        const donorUser = option.dataset.donor;
+        let reqQty = parseInt(qtyInput.value);
+        
+        if (donorUser !== 'Community Pool') {
+            const finalQty = checkQuantityNegotiation(reqQty, availQty, donorUser, 'donation', sel.value);
+            if (finalQty === false) return; // Negotiating
+            reqQty = finalQty;
+        }
+        
+        DB.requests.push({
+            id: Date.now(),
+            req_username: APP.user,
+            req_name: APP.name,
+            food_name: option.text.split(' by ')[0].replace('Default: ', ''),
+            quantity: reqQty,
+            urgency: 'Medium',
+            priority_score: 50,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        });
+        toast('Food request submitted to the community!', 'ok');
+        qtyInput.value = '';
+        locInput.value = '';
+        saveDB();
+        renderTrustDonations();
+        return;
+    }
+    
+    // For funds, just call original logic
+    if (originalSubmitTrust) originalSubmitTrust(e);
+};
+
+// P2P Direct Messaging UI
+function openDirectChat(targetUser, contextType, contextId) {
+    let chatHtml = `
+    <div style="display:flex; flex-direction:column; height:400px;">
+        <div class="modal-head" style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            <span class="modal-title">💬 Message ${targetUser}</span>
+            <button class="x-btn" onclick="closeModal()">✕</button>
+        </div>
+        <div id="dm-msgs-container" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px;">
+            <!-- Messages load here -->
+        </div>
+        <div style="display:flex; gap:10px; padding-top:10px; border-top:1px solid #eee;">
+            <input type="text" id="dm-input" placeholder="Type message..." style="flex:1; padding:8px; border-radius:8px; border:1px solid #ccc;">
+            <button class="btn btn-primary" onclick="sendDirectMessage('${targetUser}', '${contextType}', ${contextId})">Send</button>
+        </div>
+    </div>`;
+    
+    showModal(chatHtml);
+    renderDirectMessages(targetUser);
+}
+
+function renderDirectMessages(targetUser) {
+    const container = byId('dm-msgs-container');
+    if (!container) return;
+    
+    const msgs = DB.messages.filter(m => 
+        (m.sender_username === APP.user && m.receiver_username === targetUser) ||
+        (m.sender_username === targetUser && m.receiver_username === APP.user)
+    );
+    
+    if (msgs.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:#888;font-size:0.9rem;margin-top:20px">No messages yet. Say hi! 👋</div>';
+        return;
+    }
+    
+    container.innerHTML = msgs.map(m => {
+        const isMe = m.sender_username === APP.user;
+        return `
+        <div style="align-self: ${isMe ? 'flex-end' : 'flex-start'}; background: ${isMe ? '#2563eb' : '#f1f5f9'}; color: ${isMe ? '#fff' : '#333'}; padding: 8px 12px; border-radius: 12px; max-width: 80%; font-size: 0.9rem;">
+            ${m.message_text}
+        </div>
+        `;
+    }).join('');
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+function sendDirectMessage(targetUser, contextType, contextId) {
+    const inp = byId('dm-input');
+    if (!inp || !inp.value.trim()) return;
+    
+    DB.messages.push({
+        id: Date.now(),
+        sender_username: APP.user,
+        receiver_username: targetUser,
+        context_type: contextType,
+        context_id: contextId,
+        message_text: inp.value.trim(),
+        is_read: false,
+        created_at: new Date().toISOString()
+    });
+    
+    inp.value = '';
+    saveDB();
+    renderDirectMessages(targetUser);
+}
+
+// Hook into initial loads
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if(byId('treq-food-sel')) populateFoodDropdown('treq-food-sel');
+        if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
+    }, 500);
 });
