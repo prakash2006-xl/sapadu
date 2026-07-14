@@ -61,7 +61,23 @@
       <p style="text-align:center;margin-top:14px;font-size:.8rem;color:var(--txt3)">Already have an account? <a href="#" onclick="switchAuthTab('signin');return false" style="color:var(--g2);font-weight:600">Sign In →</a></p>
     </div>
     <div style="margin-top:16px;text-align:center;font-size:.75rem;color:var(--txt3)">🤖 Powered by TensorFlow.js MobileNet · P2P Community Network</div>
+</div>
+
+<div class="chat-wrap" id="chat-wrap">
+  <div class="chat-box" id="chat-box">
+    <div class="chat-head">
+      <h4>🤖 <span>Zero Hunger AI Assistant</span></h4>
+      <button class="x-btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="toggleChat()">✕</button>
+    </div>
+    <div class="chat-msgs" id="chat-msgs">
+      <div class="chat-msg bot">👋 Hello! I'm your Zero Hunger P2P AI assistant. Ask me about donations, requests, volunteers, trust scores, or routing!</div>
+    </div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Ask anything…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="chat-send" onclick="sendChat()">➤</button>
+    </div>
   </div>
+  <button class="chat-toggle" onclick="toggleChat()" id="chat-toggle-btn" title="AI Assistant">🤖</button>
 </div>
 <!-- Scripts -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -69,6 +85,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/api_keys.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

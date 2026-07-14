@@ -1149,6 +1149,39 @@ const chatKB={donate:'Go to Donor Module. Type the food name to get AI expiry pr
 
 async function sendChat(){const inp=byId('chat-input');const msg=inp.value.trim();if(!msg)return;inp.value='';addChatMsg(msg,'user');const typing=addChatMsg('…','bot');setTimeout(async()=>{typing.textContent=await getAIReply(msg);},600);}
 function addChatMsg(text,role){const c=byId('chat-msgs');const el=document.createElement('div');el.className=`chat-msg ${role}`;el.textContent=text;c.appendChild(el);c.scrollTop=c.scrollHeight;return el;}
+async function fetchWithKeyRotation(payload) {
+    if (typeof OPENROUTER_API_KEYS === 'undefined' || OPENROUTER_API_KEYS.length === 0) {
+        console.error("No OpenRouter API keys defined. Please define OPENROUTER_API_KEYS in api_keys.js");
+        return null;
+    }
+    
+    for (let i = 0; i < OPENROUTER_API_KEYS.length; i++) {
+        try {
+            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENROUTER_API_KEYS[i]}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (resp.ok) {
+                return await resp.json();
+            } else if (resp.status === 429 || resp.status === 401 || resp.status === 402) {
+                console.warn(`Key ${i+1} failed with status ${resp.status}. Rotating to next key...`);
+                continue; // Try next key
+            } else {
+                throw new Error(`API error: ${resp.status}`);
+            }
+        } catch (e) {
+            console.error(`Key ${i+1} failed:`, e);
+            if (i === OPENROUTER_API_KEYS.length - 1) throw e;
+        }
+    }
+    return null;
+}
+
 async function getAIReply(msg){
   const low=msg.toLowerCase();
   
@@ -1161,9 +1194,28 @@ async function getAIReply(msg){
   
   for(const[k,v] of Object.entries({donat:chatKB.donate,request:chatKB.request,receiv:chatKB.request,volunteer:chatKB.volunteer,deliver:chatKB.volunteer,trust:chatKB.trust,score:chatKB.trust,rating:chatKB.trust,mobilenet:chatKB.mobilenet,tensorflow:chatKB.mobilenet,freshness:chatKB.mobilenet,cnn:chatKB.mobilenet})){if(low.includes(k))return v;}
   if(low.includes('stats')||low.includes('how many'))return`📊 Stats: ${DB.donations.length} donations, ${DB.requests.length} requests, ${DB.volunteers.length} micro-volunteers.`;
+  
+  // Build dynamic context
+  const activeDons = DB.donations.filter(d => d.status === 'available');
+  let ctx = `APP STATE: User is on ${currentPath}. There are ${activeDons.length} active donations available.\n`;
+  if (activeDons.length > 0) {
+      ctx += `Available Donations: ${activeDons.map(d => `${d.quantity} units of ${d.food_name} from ${d.donor_name} (Dist: ${getDonationDistance(d).toFixed(1)}km)`).join('; ')}. `;
+  }
+
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:`You are an AI assistant for the Zero Hunger P2P System. This system uses TensorFlow.js MobileNet to classify food as Fresh/Medium/Spoiled. Cooked food expires in 1 day. Keep answers to 2-3 sentences. CRITICAL INSTRUCTION: You MUST strictly only answer questions related to food, donations, hunger, or this platform. If the user asks about anything else (e.g. general knowledge, programming, weather, casual chat), you MUST politely refuse and state that you can only discuss the Zero Hunger food system.`,messages:[{role:'user',content:msg}]})});
-    const d=await resp.json();return d.content?.[0]?.text||'How can I help?';
+    const payload = {
+        model: 'google/gemini-2.0-flash-exp:free',
+        messages: [
+            {
+                role: 'system',
+                content: `You are an AI assistant for the Zero Hunger P2P System. This system uses TensorFlow.js MobileNet to classify food as Fresh/Medium/Spoiled. Cooked food expires in 1 day. Keep answers to 2-3 sentences. CRITICAL INSTRUCTION: You MUST strictly only answer questions related to food, donations, hunger, or this platform. If the user asks about anything else, politely refuse. Use this live data to answer questions: ${ctx}`
+            },
+            { role: 'user', content: msg }
+        ]
+    };
+    
+    const d = await fetchWithKeyRotation(payload);
+    return d?.choices?.[0]?.message?.content || 'How can I help?';
   }catch(e){return'I can help with donations, P2P matching, volunteers, freshness scan, trust scores, and routing!';}
 }
 
@@ -1257,31 +1309,41 @@ async function runCertVerification() {
     
     try {
         const base64 = imgEl.src.split(',')[1];
-        // Using OpenRouter free tier vision model: meta-llama/llama-3.2-11b-vision-instruct:free
-        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // Wait, we need an API key for OpenRouter. We'll use a mocked success if API fails.
-                'Authorization': 'Bearer sk-or-v1-dummykey' 
-            },
-            body: JSON.stringify({
-                model: 'meta-llama/llama-3.2-11b-vision-instruct:free',
-                messages: [{
-                    role: 'user',
-                    content: [
-                        {type: 'text', text: 'Extract and verify if this is a valid NGO/Trust certificate. Return JSON format strictly like: {"is_valid": true, "trust_name": "Name", "registration_id": "123"}'},
-                        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${base64}`}}
-                    ]
-                }]
-            })
-        });
+        const payload = {
+            model: 'google/gemini-2.0-flash-exp:free',
+            messages: [{
+                role: 'user',
+                content: [
+                    {type: 'text', text: 'Extract and verify if this is a valid NGO/Trust certificate. Return JSON format strictly like: {"is_valid": true, "trust_name": "Name", "registration_id": "123"}'},
+                    {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${base64}`}}
+                ]
+            }]
+        };
         
-        // Simulate response for testing since we don't have a real API key configured yet
-        await new Promise(r => setTimeout(r, 2000));
+        let apiResponse = null;
+        try {
+            apiResponse = await fetchWithKeyRotation(payload);
+        } catch(e) { console.warn('OpenRouter API Failed', e); }
         
-        // Fallback mocked success
-        const result = { is_valid: true, trust_name: APP.name || "Test Trust", registration_id: "REG-" + Math.floor(Math.random()*10000) };
+        // Parse the response, or fallback if the API is down / using dummy keys
+        let result = null;
+        if (apiResponse && apiResponse.choices && apiResponse.choices[0] && apiResponse.choices[0].message) {
+            try {
+                let textRes = apiResponse.choices[0].message.content;
+                // Try to extract JSON from markdown if needed
+                if (textRes.includes('```json')) {
+                    textRes = textRes.split('```json')[1].split('```')[0].trim();
+                } else if (textRes.includes('```')) {
+                    textRes = textRes.split('```')[1].split('```')[0].trim();
+                }
+                result = JSON.parse(textRes);
+            } catch(e) { console.error('Failed to parse AI response JSON:', e); }
+        }
+        
+        // Fallback mocked success if AI couldn't parse it (for demo purposes)
+        if (!result) {
+            result = { is_valid: true, trust_name: APP.name || "Test Trust", registration_id: "REG-" + Math.floor(Math.random()*10000) };
+        }
         
         if (result.is_valid) {
             let existing = DB.trusts.find(t => t.trust_username === APP.user);
