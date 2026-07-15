@@ -971,7 +971,8 @@ function renderDonTbl(){
     const dist=haversine(uLat,uLng,+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG));
     const ts=getTrustScore(d.donor_name,'donor');
     const myReq = DB.requests.find(r => Number(r.donation_id) === Number(d.id) && r.req_username === APP.user);
-    const isDonorOwn = d.donor_username === APP.user;
+    const uStr = String(APP.user||'').toLowerCase().trim();
+    const isDonorOwn = (String(d.donor_username||'').toLowerCase().trim() === uStr) || (String(d.donor_name||'').toLowerCase().trim() === String(APP.name||'').toLowerCase().trim());
     const isMyRequest = !!myReq;
     let actBtn = '-';
     if (isDonorOwn || isMyRequest) {
@@ -1162,10 +1163,11 @@ function openConnectModal(donationId) {
         return;
     }
 
-    const otherUser = APP.user === don.donor_username ? req.req_username : don.donor_username;
+    const uStr = String(APP.user||'').toLowerCase().trim();
+    const isDonor = (String(don.donor_username||'').toLowerCase().trim() === uStr) || (String(don.donor_name||'').toLowerCase().trim() === String(APP.name||'').toLowerCase().trim());
+    const otherUser = isDonor ? (req.req_username || req.req_name) : don.donor_username;
     const msgs = DB.messages.filter(m => Number(m.context_id) === Number(donationId) && m.context_type === 'donation').sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
     
-    const isDonor = APP.user === don.donor_username;
     const confirmedByMe = isDonor ? req.donor_confirmed : req.receiver_confirmed;
     const confirmedByOther = isDonor ? req.receiver_confirmed : req.donor_confirmed;
     
@@ -1219,7 +1221,8 @@ window.confirmHandoff = async function(reqId) {
     const req = DB.requests.find(r => Number(r.id) === Number(reqId));
     if (!req) return;
     const don = DB.donations.find(d => Number(d.id) === Number(req.donation_id));
-    const isDonor = APP.user === (don ? don.donor_username : '');
+    const uStr = String(APP.user||'').toLowerCase().trim();
+    const isDonor = don ? ((String(don.donor_username||'').toLowerCase().trim() === uStr) || (String(don.donor_name||'').toLowerCase().trim() === String(APP.name||'').toLowerCase().trim())) : false;
     
     const updates = isDonor ? { donor_confirmed: true } : { receiver_confirmed: true };
     try {
