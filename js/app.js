@@ -605,6 +605,8 @@ function showPage(id){
   const targetPage = id === 'login-page' ? 'index.html' : id.replace('-page', '.html');
   const currentPath = window.location.pathname.split('/').pop() || 'index.html';
   if (currentPath !== targetPage) {
+    const pageId = currentPath === 'index.html' ? 'login-page' : currentPath.replace('.html', '-page');
+    sessionStorage.setItem('zh_prevPage', pageId);
     window.location.href = targetPage;
   }
 }
@@ -646,7 +648,7 @@ if (signupForm) {
       });
       const data = await res.json();
       if (data.success) {
-        REGISTRY[username]={pw,role,name,age:null,email,phone,emoji};
+        REGISTRY[username]={pw,role,name,email,phone,emoji};
         saveRegistry();
         toast(`Account created! Welcome, ${name} 🎉`,'ok');
         afterLogin(username);
@@ -657,12 +659,12 @@ if (signupForm) {
       
       // --- SUPABASE BACKEND ---
       if (supabaseClient) {
-          const { data, error } = await supabaseClient.from('users').insert([{ username, password: pw, name, age:null, email, phone, role, emoji }]);
+          const { data, error } = await supabaseClient.from('users').insert([{ username, password: pw, name, email, phone, role, emoji }]);
           if (error) {
               if (error.code === '23505') { if(suerr) suerr.textContent = 'Username already taken.'; }
               else { if(suerr) suerr.textContent = error.message || 'Signup failed'; }
           } else {
-              REGISTRY[username]={pw,role,name,age:null,email,phone,emoji};
+              REGISTRY[username]={pw,role,name,email,phone,emoji};
               saveRegistry();
               toast(`Account created! Welcome, ${name} 🎉`,'ok');
               afterLogin(username);
@@ -816,7 +818,10 @@ function handleModClick(k){
   if(k==='volunteer'){showPage('volunteer-page');initVolSection();initLiveMap('vol-map','vol');return}
   if(k==='trust'){showPage('trust-page');initTrustDashboard();return}
 }
-function goBack(){showPage(APP.prevPage||'profile-page');if(APP.prevPage==='profile-page')loadProfile();}
+function goBack(){
+  const prev = sessionStorage.getItem('zh_prevPage') || 'profile-page';
+  showPage(prev);
+}
 
 function initMiniMap(){
   if(APP.maps.mini){try{APP.maps.mini.remove()}catch(e){}delete APP.maps.mini}
@@ -866,7 +871,7 @@ function initLiveMap(elId,prefix){
 
 const freshScore=(mfg,exp)=>{const now=new Date(),m=new Date(mfg),e=new Date(exp);const tot=(e-m)/86400000,rem=(e-now)/86400000;return Math.round(Math.max(0,Math.min(1,rem/tot))*100)/10;};
 const expiryDays=exp=>Math.max(0,Math.round((new Date(exp)-new Date())/86400000));
-const priorityScore=(urg,days,fresh)=>Math.min(100,(urg==='High'?60:20)+Math.max(0,30-Math.min(30,days))+(+fresh*1.5)).toFixed(1);
+const priorityScore=(urg,days,fresh)=>Math.round(Math.min(100,(urg==='High'?60:20)+Math.max(0,30-Math.min(30,days))+(+fresh*1.5)));
 
 function togglePaySection(){
   const v=byId('pay-type-select').value;
@@ -891,7 +896,7 @@ if(donateForm) donateForm.addEventListener('submit', async e=>{
   if(pay_type==='online')payInfo=`Online ₹${f.onl_amount.value||'?'} via ${f.onl_mode.value} (${f.onl_txn.value||'no txn'})`;
   const foodType=currentFoodType||classifyFood(food_name)?.type||'raw';
   const latOff=(Math.random()-0.5)*0.05,lngOff=(Math.random()-0.5)*0.05;
-  const d={donor_username: APP.user, donor_name,donor_age:null,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
+  const d={donor_username: APP.user, donor_name,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -901,10 +906,11 @@ if(donateForm) donateForm.addEventListener('submit', async e=>{
       
       // --- SUPABASE BACKEND ---
       if (supabaseClient) {
-          await supabaseClient.from('donations').insert([d]);
+          const { error } = await supabaseClient.from('donations').insert([d]);
+          if (error) throw error;
           await syncDatabase();
       }
-  } catch(e) {}
+  } catch(e) { toast('Error: ' + (e.message||'Failed to save'), 'err'); return; }
   updateNotifBadge();
   const typeInfo=FOOD_DB[foodType];
   byId('don-ai-res').innerHTML=`<div class="ai-box"><div class="ai-dot">✅ Donation Accepted — P2P Network Live</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;text-align:center"><div><div style="font-size:.68rem;opacity:.7">Food Type</div><div style="font-size:1.2rem;margin-top:4px">${typeInfo.icon}</div><div style="font-size:.72rem;font-weight:700;color:#22c55e;margin-top:2px">${typeInfo.label}</div></div><div><div style="font-size:.68rem;opacity:.7">Freshness</div><div style="font-size:1.6rem;font-weight:800;color:#22c55e">${fresh}<small>/10</small></div></div><div><div style="font-size:.68rem;opacity:.7">Expiry</div><div style="font-size:1.6rem;font-weight:800;color:#22c55e">${days}<small>d</small></div></div><div><div style="font-size:.68rem;opacity:.7">Payment</div><div style="font-size:.85rem;font-weight:700;color:#2dd4bf;margin-top:6px">${pay_type==='physical'?'💵 Cash':'💳 Online'}</div></div></div></div>`;
@@ -924,7 +930,8 @@ function renderDonTbl(){
     const ti=FOOD_DB[d.food_type||'raw'];
     const dist=haversine(uLat,uLng,+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG));
     const ts=getTrustScore(d.donor_name,'donor');
-    return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${d.donor_age}</td><td>${esc(d.food_name)}</td><td><span style="font-size:1rem">${ti.icon}</span> ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td>${getDistBadge(dist)}</td><td>${d.expiry_days}d</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td></tr>`;
+    const actBtn=d.status==='requested'?`<button class="btn btn-sm btn-primary" onclick="openConnectModal(${d.id})">💬 Connect</button>`:'-';
+    return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td><span style="font-size:1rem">${ti.icon}</span> ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td>${getDistBadge(dist)}</td><td>${d.expiry_days}d</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td><td>${actBtn}</td></tr>`;
   }).join('');
 }
 
@@ -954,7 +961,7 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
 
   const urg=f.req_urgency.value,req_loc=f.req_loc.value.trim();if(!req_loc){toast('Enter your location','err');return}
   const pri=priorityScore(urg,don.expiry_days,don.freshness_score);const dist=getDonationDistance(don);
-  const req={req_username: APP.user, req_name,req_age:null,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
+  const req={req_username: APP.user, req_name,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -964,13 +971,14 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
       
       // --- SUPABASE BACKEND ---
       if (supabaseClient) {
-          await supabaseClient.from('requests').insert([req]);
+          const { error } = await supabaseClient.from('requests').insert([req]);
+          if (error) throw error;
           await supabaseClient.from('donations').update({ status: 'requested' }).eq('id', req.donation_id);
           await syncDatabase();
       }
-  } catch(e) {}
+  } catch(e) { toast('Error: ' + (e.message||'Failed to save'), 'err'); return; }
   byId('req-pri-preview').innerHTML=`<div style="padding:10px;background:#dbeafe;border-radius:8px;color:#1e40af;font-size:.84rem">🤖 Priority: <strong>${pri}/100</strong> · Distance: <strong>${dist.toFixed(2)} km</strong></div>`;
-  byId('req-confirm').innerHTML=`<div class="notif-item" style="background:var(--g5);border-color:var(--g2)"><div class="notif-t">✅ P2P Request Confirmed</div><div class="notif-m">Priority: ${pri}/100 · ${dist.toFixed(2)} km away</div></div>`;
+  byId('req-confirm').innerHTML=`<div class="notif-item" style="background:var(--g5);border-color:var(--g2)"><div class="notif-t">✅ P2P Request Confirmed</div><div class="notif-m">Priority: ${pri}/100 · ${dist.toFixed(2)} km away</div><button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="openConnectModal(${donId})">💬 Connect with Donor</button></div>`;
   updateNotifBadge();toast(`Request submitted! Priority: ${pri}/100`,'ok');
   f.reset();initReqSection();checkMicroVolunteerAlert();updateCarbonMetrics();
 });
@@ -985,19 +993,19 @@ function renderVolDonors(){
   const tb=byId('vol-donor-tbody');if(!tb)return;
   if(!DB.donations.length){tb.innerHTML='<tr><td colspan="9" class="empty">No donations yet.</td></tr>';return}
   const sorted=[...DB.donations].map(d=>({...d,dist:getDonationDistance(d)})).sort((a,b)=>a.dist-b.dist);
-  tb.innerHTML=sorted.map(d=>{const ts=getTrustScore(d.donor_name,'donor');return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${d.donor_age}</td><td>${esc(d.food_name)}</td><td>${d.quantity}</td><td>${getDistBadge(d.dist)}</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td></tr>`;}).join('');
+  tb.innerHTML=sorted.map(d=>{const ts=getTrustScore(d.donor_name,'donor');return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td>${d.quantity}</td><td>${getDistBadge(d.dist)}</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td></tr>`;}).join('');
 }
 
 const volForm = document.getElementById('vol-form');
 if(volForm) volForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
-  const vol_name=f.vol_name.value.trim(),vol_age=+f.vol_age.value;
-  if(!vol_name||!vol_age){toast('Name and age required','err');return}
+  const vol_name=f.vol_name.value.trim();
+  if(!vol_name){toast('Name required','err');return}
   if(!APP.slot){toast('Select a time slot','err');return}
   const vol_pickup=f.vol_pickup.value.trim();if(!vol_pickup){toast('Enter your pickup location','err');return}
   const pending=DB.requests.filter(r=>r.status==='pending').sort((a,b)=>+b.priority_score-+a.priority_score);
   const assigned=pending.length>0,aReq=pending[0];
-  const vol = {vol_username: APP.user, vol_name,vol_age,vehicle_type:f.vehicle_type.value,pickup_location:vol_pickup,shift:f.shift_sel.value,time_slot:APP.slot,status:assigned?'busy':'active', assigned_req_id: assigned ? aReq.id : null};
+  const vol = {vol_username: APP.user, vol_name,vehicle_type:f.vehicle_type.value,pickup_location:vol_pickup,shift:f.shift_sel.value,time_slot:APP.slot,status:assigned?'busy':'active', assigned_req_id: assigned ? aReq.id : null};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -1007,13 +1015,14 @@ if(volForm) volForm.addEventListener('submit', async e=>{
       
       // --- SUPABASE BACKEND ---
       if (supabaseClient) {
-          await supabaseClient.from('volunteers').insert([vol]);
+          const { error } = await supabaseClient.from('volunteers').insert([vol]);
+          if (error) throw error;
           if (vol.assigned_req_id) {
               await supabaseClient.from('requests').update({ status: 'assigned' }).eq('id', vol.assigned_req_id);
           }
           await syncDatabase();
       }
-  } catch(e) {}
+  } catch(e) { toast('Error: ' + (e.message||'Failed to save'), 'err'); return; }
   const ar=byId('agent-res');
   if(assigned&&aReq){ar.innerHTML=`<div class="agent-res"><div style="font-size:2rem;margin-bottom:8px">🤖</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:6px">AI Assignment Complete</h3><p style="opacity:.8;font-size:.84rem">Deliver to: <strong>${esc(aReq.location_label||'See request details')}</strong></p><p style="font-size:.84rem;margin-top:4px">Priority: <strong>${aReq.priority_score}/100</strong></p></div>`;byId('smart-route-section').style.display='block';toast('🤖 AI assigned you to a delivery!','ok');}
   else{ar.innerHTML=`<div class="agent-res"><h3 style="font-size:1rem;font-weight:700">✅ Registered!</h3><p style="margin-top:6px;font-size:.84rem;opacity:.8">No pending requests. You'll be notified when one arrives.</p></div>`;toast('Registered as micro-volunteer!','ok');}
@@ -1076,16 +1085,92 @@ function loadMarkers(filter){
   let markers=DB.donations;
   if(filter==='quality')markers=[...markers].sort((a,b)=>+b.freshness_score-+a.freshness_score).slice(0,5);
   markers.forEach(d=>{const sc=+d.freshness_score,col=sc>=8?'#16a34a':sc>=5?'#f59e0b':'#ef4444';L.marker([+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG)],{icon:L.divIcon({html:`<div style="background:${col};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3)"></div>`,className:'',iconSize:[12,12]})}).addTo(APP.maps.admin).bindPopup(`<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;min-width:140px"><strong>${esc(d.food_name)}</strong><br>📦 ${d.quantity} units<br>🌿 Freshness: <strong>${d.freshness_score}/10</strong></div>`);});
-  if(filter==='routes'&&DB.requests.length){DB.requests.forEach(req=>{const don=DB.donations.find(d=>d.id===req.donation_id);if(!don)return;L.polyline([[+(don.lat||DEFAULT_LAT),+(don.lng||DEFAULT_LNG)],[DEFAULT_LAT+(Math.random()-0.5)*0.02,DEFAULT_LNG+(Math.random()-0.5)*0.02]],{color:'#3b82f6',weight:3,opacity:.7,dashArray:'8 4'}).addTo(APP.maps.admin);});}
+  if(filter==='routes'&&DB.requests.length){DB.requests.forEach(req=>{const don=DB.donations.find(d=>Number(d.id)===Number(req.donation_id));if(!don)return;L.polyline([[+(don.lat||DEFAULT_LAT),+(don.lng||DEFAULT_LNG)],[DEFAULT_LAT+(Math.random()-0.5)*0.02,DEFAULT_LNG+(Math.random()-0.5)*0.02]],{color:'#3b82f6',weight:3,opacity:.7,dashArray:'8 4'}).addTo(APP.maps.admin);});}
 }
 
 function renderDetailTables(){
   const donTb=byId('det-don-tb');
-  if(donTb)donTb.innerHTML=DB.donations.length?DB.donations.map(d=>{const ti=FOOD_DB[d.food_type||'raw'];const ts=getTrustScore(d.donor_name,'donor');return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${d.donor_age}</td><td>${esc(d.food_name)}</td><td>${ti.icon} ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${esc(d.pay_info||d.pay_type)}</span></td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-weight:600">${ts.hasRating?`${ts.score}/100 ${ts.level}`:'Not yet rated'}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">No donors yet.</td></tr>';
+  if(donTb)donTb.innerHTML=DB.donations.length?DB.donations.map(d=>{const ti=FOOD_DB[d.food_type||'raw'];const ts=getTrustScore(d.donor_name,'donor');return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td>${ti.icon} ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${esc(d.pay_info||d.pay_type)}</span></td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-weight:600">${ts.hasRating?`${ts.score}/100 ${ts.level}`:'Not yet rated'}</td></tr>`;}).join(''):'<tr><td colspan="7" class="empty">No donors yet.</td></tr>';
   const reqTb=byId('det-req-tb');
-  if(reqTb)reqTb.innerHTML=DB.requests.length?DB.requests.map(r=>`<tr><td><strong>${esc(r.req_name)}</strong></td><td>${r.req_age}</td><td>${esc(r.food_name)}</td><td>${r.quantity}</td><td><span class="badge ${r.urgency==='High'?'bg-r':'bg-y'}">${r.urgency}</span></td><td style="${pClass(r.priority_score)}">${r.priority_score}</td><td>${r.distance_km||'—'} km</td><td><span class="badge ${sBadge(r.status)}">${r.status}</span></td></tr>`).join(''):'<tr><td colspan="8" class="empty">No requests yet.</td></tr>';
+  if(reqTb)reqTb.innerHTML=DB.requests.length?DB.requests.map(r=>`<tr><td><strong>${esc(r.req_name)}</strong></td><td>${esc(r.food_name)}</td><td>${r.quantity}</td><td><span class="badge ${r.urgency==='High'?'bg-r':'bg-y'}">${r.urgency}</span></td><td style="${pClass(r.priority_score)}">${r.priority_score}</td><td>${r.distance_km||'—'} km</td><td><span class="badge ${sBadge(r.status)}">${r.status}</span></td></tr>`).join(''):'<tr><td colspan="7" class="empty">No requests yet.</td></tr>';
   const volTb=byId('det-vol-tb');
-  if(volTb)volTb.innerHTML=DB.volunteers.length?DB.volunteers.map(v=>{const ts=getTrustScore(v.vol_name,'volunteer');return`<tr><td><strong>${esc(v.vol_name)}</strong></td><td>${v.vol_age}</td><td>${v.vehicle_type}</td><td>${v.shift}</td><td>${v.time_slot||'—'}</td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-weight:600">${ts.hasRating?`${ts.score}/100 ${ts.level}`:'Not yet rated'}</td><td><span class="badge ${sBadge(v.status)}">${v.status}</span></td></tr>`;}).join(''):'<tr><td colspan="7" class="empty">No volunteers yet.</td></tr>';
+  if(volTb)volTb.innerHTML=DB.volunteers.length?DB.volunteers.map(v=>{const ts=getTrustScore(v.vol_name,'volunteer');return`<tr><td><strong>${esc(v.vol_name)}</strong></td><td>${v.vehicle_type}</td><td>${v.shift}</td><td>${v.time_slot||'—'}</td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-weight:600">${ts.hasRating?`${ts.score}/100 ${ts.level}`:'Not yet rated'}</td><td><span class="badge ${sBadge(v.status)}">${v.status}</span></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">No volunteers yet.</td></tr>';
+}
+
+function openConnectModal(donationId) {
+    const don = DB.donations.find(d => Number(d.id) === Number(donationId));
+    const req = DB.requests.find(r => Number(r.donation_id) === Number(donationId));
+    if (!don || !req) {
+        toast('Receiver details not found!', 'err');
+        return;
+    }
+    const otherUser = APP.user === don.donor_username ? req.req_username : don.donor_username;
+    const msgs = DB.messages.filter(m => Number(m.context_id) === Number(donationId) && m.context_type === 'donation').sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    
+    showModal(`
+        <div class="modal-head">
+            <span class="modal-title">💬 P2P Connect: ${esc(don.food_name)}</span>
+            <button class="x-btn" onclick="closeModal()">✕</button>
+        </div>
+        <div style="padding:14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.85rem;color:var(--txt2)">
+            Coordinating with: <strong>${esc(APP.user === don.donor_username ? req.req_name : don.donor_name)}</strong><br>
+            Food: <strong>${esc(don.food_name)} (${req.quantity} units)</strong>
+        </div>
+        <div id="chat-msgs-container" style="padding:14px;height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;background:#fff">
+            ${msgs.length ? msgs.map(m => `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${m.sender_username===APP.user?'align-self:flex-end;background:var(--g2);color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;background:#f1f5f9;color:var(--txt);border-bottom-left-radius:2px'}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:20px">No messages yet. Say hi! 👋</div>'}
+        </div>
+        <div style="padding:14px;border-top:1px solid #e2e8f0;display:flex;gap:8px">
+            <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);outline:none">
+            <button class="btn btn-primary" onclick="sendP2PMessage(${donationId}, '${otherUser}')">Send</button>
+        </div>
+    `);
+    
+    setTimeout(() => {
+        const c = byId('chat-msgs-container');
+        if (c) c.scrollTop = c.scrollHeight;
+        const i = byId('p2p-chat-input');
+        if (i) {
+            i.focus();
+            i.onkeydown = (e) => { if (e.key === 'Enter') sendP2PMessage(donationId, otherUser); };
+        }
+    }, 100);
+}
+
+async function sendP2PMessage(donationId, receiverUsername) {
+    const inp = byId('p2p-chat-input');
+    const text = inp.value.trim();
+    if (!text) return;
+    
+    const msg = {
+        sender_username: APP.user,
+        receiver_username: receiverUsername,
+        context_type: 'donation',
+        context_id: donationId,
+        message_text: text,
+        is_read: false
+    };
+    
+    inp.value = '';
+    
+    // Optimistic UI update
+    const c = byId('chat-msgs-container');
+    if (c) {
+        if (c.innerHTML.includes('No messages yet')) c.innerHTML = '';
+        c.innerHTML += `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;align-self:flex-end;background:var(--g2);color:#fff;border-bottom-right-radius:2px">${esc(text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">Just now</div></div>`;
+        c.scrollTop = c.scrollHeight;
+    }
+    
+    try {
+        if (supabaseClient) {
+            const { data } = await supabaseClient.from('messages').insert([msg]).select('*');
+            if (data && data[0]) {
+                DB.messages.push(data[0]);
+                saveDB();
+            }
+        }
+    } catch (e) {
+        console.error("Message send error:", e);
+    }
 }
 
 function goDetails(){
@@ -1626,7 +1711,7 @@ window.submitTrustRequest = async function(e) {
         const donId = parseInt(sel.value);
         let don = null;
         if (!isNaN(donId)) {
-             don = DB.donations.find(d => d.id === donId);
+             don = DB.donations.find(d => Number(d.id) === Number(donId));
         }
         
         const req = {
