@@ -626,12 +626,12 @@ const signupForm = document.getElementById('signup-form');
 if (signupForm) {
   signupForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const name=byId('su-name').value.trim(),age=+byId('su-age').value;
+    const name=byId('su-name').value.trim();
     const email=byId('su-email').value.trim(),username=byId('su-user').value.trim().toLowerCase();
     const phone=byId('su-phone').value.trim(),pw=byId('su-pw').value,pw2=byId('su-pw2').value;
     const role=byId('su-role').value;
     const suerr=byId('suerr'); if(suerr) suerr.textContent='';
-    if(!name||!age||!email||!username||!pw){if(suerr)suerr.textContent='All required fields must be filled.';return}
+    if(!name||!email||!username||!pw){if(suerr)suerr.textContent='All required fields must be filled.';return}
     if(pw.length<6){if(suerr)suerr.textContent='Password must be at least 6 characters.';return}
     if(pw!==pw2){if(suerr)suerr.textContent='Passwords do not match.';return}
     const emoji=role==='admin'?'⚙️':'👤';
@@ -646,7 +646,7 @@ if (signupForm) {
       });
       const data = await res.json();
       if (data.success) {
-        REGISTRY[username]={pw,role,name,age,email,phone,emoji};
+        REGISTRY[username]={pw,role,name,age:null,email,phone,emoji};
         saveRegistry();
         toast(`Account created! Welcome, ${name} 🎉`,'ok');
         afterLogin(username);
@@ -657,12 +657,12 @@ if (signupForm) {
       
       // --- SUPABASE BACKEND ---
       if (supabaseClient) {
-          const { data, error } = await supabaseClient.from('users').insert([{ username, password: pw, name, age, email, phone, role, emoji }]);
+          const { data, error } = await supabaseClient.from('users').insert([{ username, password: pw, name, age:null, email, phone, role, emoji }]);
           if (error) {
               if (error.code === '23505') { if(suerr) suerr.textContent = 'Username already taken.'; }
               else { if(suerr) suerr.textContent = error.message || 'Signup failed'; }
           } else {
-              REGISTRY[username]={pw,role,name,age,email,phone,emoji};
+              REGISTRY[username]={pw,role,name,age:null,email,phone,emoji};
               saveRegistry();
               toast(`Account created! Welcome, ${name} 🎉`,'ok');
               afterLogin(username);
@@ -1757,7 +1757,6 @@ function openSettingsModal(){
     </div>
     <form id="settings-form" style="display:flex; flex-direction:column; gap:12px;">
         <div class="fg"><label>Full Name</label><input type="text" id="set-name" value="${esc(u.name)}" required></div>
-        <div class="fg"><label>Age</label><input type="number" id="set-age" value="${u.age || ''}" required></div>
         <div class="fg"><label>Email</label><input type="email" id="set-email" value="${esc(u.email || '')}" required></div>
         <div class="fg"><label>Phone</label><input type="text" id="set-phone" value="${esc(u.phone || '')}" required></div>
         <div class="fg"><label>New Password (Optional)</label><input type="password" id="set-pw" placeholder="Leave blank to keep current password"></div>
@@ -1769,18 +1768,17 @@ function openSettingsModal(){
     document.getElementById('settings-form').addEventListener('submit', function(e) {
         e.preventDefault();
         const n = byId('set-name').value.trim();
-        const a = byId('set-age').value;
         const em = byId('set-email').value.trim();
         const ph = byId('set-phone').value.trim();
         const pw = byId('set-pw').value;
         
-        if(!n || !a || !em || !ph) {
+        if(!n || !em || !ph) {
             toast('Please fill all required fields.', 'err');
             return;
         }
         
         u.name = n;
-        u.age = parseInt(a);
+        u.age = null;
         u.email = em;
         u.phone = ph;
         if(pw) u.pw = pw;
