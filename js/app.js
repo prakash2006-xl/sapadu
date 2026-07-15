@@ -112,7 +112,7 @@ function getTrustScore(name,type='donor'){
   if(!name||!name.trim())return{score:0,level:'No Rating Yet',color:'var(--txt3)',hasRating:false};
   const nameLower=name.toLowerCase().trim();
   const userRatings=DB.ratings.filter(r=>
-    r.category===type && r.target.toLowerCase().trim()===nameLower
+    r.category===type && (r.target_username || r.target || '').toLowerCase().trim()===nameLower
   );
   if(!userRatings.length)return{score:0,level:'No Rating Yet',color:'var(--txt3)',hasRating:false};
   const avg=userRatings.reduce((s,r)=>s+(+r.score),0)/userRatings.length;
@@ -149,7 +149,7 @@ function renderTrustCard(){
       </div>`;
     return;
   }
-  const totalRatings=DB.ratings.filter(r=>r.target.toLowerCase()===APP.name.toLowerCase()).length;
+  const totalRatings=DB.ratings.filter(r=>(r.target_username || r.target || '').toLowerCase()===APP.name.toLowerCase()).length;
   el.innerHTML=`<div class="card" style="border-left:4px solid ${tsUse.color};margin-bottom:0">
     <div class="card-body" style="padding:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -877,11 +877,11 @@ function togglePaySection(){
 const donateForm = document.getElementById('donate-form');
 if(donateForm) donateForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
-  const donor_name=f.donor_name.value.trim(),donor_age=+f.donor_age.value;
+  const donor_name=f.donor_name.value.trim();
   const food_name=f.food_name.value.trim(),qty=+f.quantity.value;
   const mfg=f.mfg_date.value,exp=f.expiry_date.value;
   const loc_text=f.location_text.value.trim(),pay_type=f.payment_type.value;
-  if(!donor_name||!donor_age||!food_name||qty<=0||!mfg||!exp||!loc_text||!pay_type){toast('Please fill all required fields','err');return}
+  if(!donor_name||!food_name||qty<=0||!mfg||!exp||!loc_text||!pay_type){toast('Please fill all required fields','err');return}
   const nfCheck=detectNonFood(food_name);
   if(nfCheck.isNonFood){toast(`🚫 "${food_name}" is not a food item! Only food donations are accepted.`,'err',4000);showNonFoodWarning(food_name,nfCheck.matched);return;}
   if(new Date(exp)<=new Date(mfg)){toast('Expiry must be after manufacture date','err');return}
@@ -891,7 +891,7 @@ if(donateForm) donateForm.addEventListener('submit', async e=>{
   if(pay_type==='online')payInfo=`Online ₹${f.onl_amount.value||'?'} via ${f.onl_mode.value} (${f.onl_txn.value||'no txn'})`;
   const foodType=currentFoodType||classifyFood(food_name)?.type||'raw';
   const latOff=(Math.random()-0.5)*0.05,lngOff=(Math.random()-0.5)*0.05;
-  const d={donor_username: APP.user, donor_name,donor_age,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
+  const d={donor_username: APP.user, donor_name,donor_age:null,food_name,food_type:foodType,quantity:qty,mfg_date:mfg,expiry_date:exp,location_label:loc_text,lat:(APP.userLat||DEFAULT_LAT)+latOff,lng:(APP.userLng||DEFAULT_LNG)+lngOff,freshness_score:fresh,expiry_days:days,pay_type,pay_info:payInfo,status:'available'};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -939,8 +939,8 @@ function initReqSection(){
 const requestForm = document.getElementById('request-form');
 if(requestForm) requestForm.addEventListener('submit', async e=>{
   e.preventDefault();const f=e.target;
-  const req_name=f.req_name.value.trim(),req_age=+f.req_age.value;
-  if(!req_name||!req_age){toast('Name and age required','err');return}
+  const req_name=f.req_name.value.trim();
+  if(!req_name){toast('Name required','err');return}
   const donId=+byId('req-food-sel').value;
   if(!donId){toast('Please select a food item','err');return}
   const qty=+f.req_qty.value;if(!qty||qty<=0){toast('Enter valid quantity','err');return}
@@ -954,7 +954,7 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
 
   const urg=f.req_urgency.value,req_loc=f.req_loc.value.trim();if(!req_loc){toast('Enter your location','err');return}
   const pri=priorityScore(urg,don.expiry_days,don.freshness_score);const dist=getDonationDistance(don);
-  const req={req_username: APP.user, req_name,req_age,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
+  const req={req_username: APP.user, req_name,req_age:null,donation_id:donId,food_name:don.food_name,quantity:qty,urgency:urg,location_label:req_loc,priority_score:pri,distance_km:dist.toFixed(2),status:'pending'};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -1099,7 +1099,7 @@ async function submitRating(){
   if(!nameEl||!catEl||!scoreEl||!reviewEl)return;
   const name=nameEl.value.trim();
   if(!name){toast('Please enter a name.','err');nameEl.focus();return;}
-  const rating={target_username: APP.user, target:name,category:catEl.value,score:+scoreEl.value,review:reviewEl.value.trim()};
+  const rating={target_username: name, category:catEl.value,score:+scoreEl.value,review:reviewEl.value.trim()};
   try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
       /*
@@ -1114,7 +1114,7 @@ async function submitRating(){
       }
   } catch(e) {}
   const ts=getTrustScore(name, catEl.value);
-  const totalRatings=DB.ratings.filter(r=>r.target.toLowerCase()===name.toLowerCase()).length;
+  const totalRatings=DB.ratings.filter(r=>(r.target_username || r.target || '').toLowerCase()===name.toLowerCase()).length;
   const previewEl=byId('rating-success-preview');
   if(previewEl){
     previewEl.innerHTML=`
@@ -1147,7 +1147,7 @@ async function submitRating(){
 function renderRatingsList(){
   const c=byId('ratings-list');if(!c)return;
   if(!DB.ratings.length){c.innerHTML='<div style="font-size:.78rem;opacity:.6;text-align:center;padding:10px">No ratings yet</div>';return}
-  c.innerHTML=[...DB.ratings].reverse().slice(0,5).map(r=>`<div style="background:rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.8rem;font-weight:700">${esc(r.target)} <span style="opacity:.7;font-size:.72rem">(${r.category})</span></div><div style="color:#22c55e;font-size:.85rem">${stars(r.score)}</div>${r.review?`<div style="font-size:.75rem;opacity:.7;margin-top:3px">${esc(r.review.slice(0,80))}${r.review.length>80?'…':''}</div>`:''}</div>`).join('');
+  c.innerHTML=[...DB.ratings].reverse().slice(0,5).map(r=>`<div style="background:rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.8rem;font-weight:700">${esc(r.target_username || r.target || 'Unknown')} <span style="opacity:.7;font-size:.72rem">(${r.category})</span></div><div style="color:#22c55e;font-size:.85rem">${stars(r.score)}</div>${r.review?`<div style="font-size:.75rem;opacity:.7;margin-top:3px">${esc(r.review.slice(0,80))}${r.review.length>80?'…':''}</div>`:''}</div>`).join('');
 }
 
 let voiceRec=null,voiceActive=false,voiceFinalText='';
@@ -1221,18 +1221,23 @@ async function getAIReply(msg){
   
   // Build dynamic context
   const activeDons = DB.donations.filter(d => d.status === 'available');
-  let ctx = `APP STATE: User is on ${currentPath}. There are ${activeDons.length} active donations available.\n`;
+  const activeReqs = DB.requests.filter(r => r.status === 'pending');
+  const curPath = window.location.pathname.split('/').pop() || 'index.html';
+  let ctx = `APP STATE: User is on ${curPath}. There are ${activeDons.length} active donations and ${activeReqs.length} pending requests.\n`;
   if (activeDons.length > 0) {
-      ctx += `Available Donations: ${activeDons.map(d => `${d.quantity} units of ${d.food_name} from ${d.donor_name} (Dist: ${getDonationDistance(d).toFixed(1)}km)`).join('; ')}. `;
+      ctx += `Available Donations: ${activeDons.map(d => `${d.quantity} units of ${d.food_name} from ${d.donor_name} (Dist: ${getDonationDistance(d).toFixed(1)}km)`).join('; ')}.\n`;
+  }
+  if (activeReqs.length > 0) {
+      ctx += `Pending Requests: ${activeReqs.map(r => `${r.quantity} units of ${r.food_name} requested by ${r.req_name} (Priority: ${r.priority_score})`).join('; ')}.\n`;
   }
 
   try{
     const payload = {
-        models: ['google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free'],
+        models: ['google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free', 'meta-llama/llama-3.1-70b-instruct:free'],
         messages: [
             {
                 role: 'system',
-                content: `You are an AI assistant for the Zero Hunger P2P System. This system uses TensorFlow.js MobileNet to classify food as Fresh/Medium/Spoiled. Cooked food expires in 1 day. Keep answers to 2-3 sentences. CRITICAL INSTRUCTION: You MUST strictly only answer questions related to food, donations, hunger, or this platform. If the user asks about anything else, politely refuse. Use this live data to answer questions: ${ctx}`
+                content: `You are an AI assistant for the Zero Hunger P2P System. This system uses TensorFlow.js MobileNet to classify food as Fresh/Medium/Spoiled. Keep answers to 2-3 sentences. CRITICAL INSTRUCTION: When answering questions about food, donations, requests, or volunteers, you MUST STRICTLY use ONLY the live data provided in the APP STATE. Do NOT give general advice if the user asks about available food or requests in the app. Answer their exact needs using the data below. If a user asks how to book or request food, instruct them to select the food from the dropdown in the 'Make a Request' form and submit it.\n\n${ctx}`
             },
             { role: 'user', content: msg }
         ]
@@ -1792,4 +1797,41 @@ function openSettingsModal(){
         if(byId('nav-uname')) byId('nav-uname').textContent = `${u.emoji} ${u.name}`;
     });
 }
-
+
+function handleAvatarUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = ev => {
+    const dataUrl = ev.target.result;
+    const imgEl = document.getElementById('prof-avatar-img');
+    const avEl = document.getElementById('prof-avatar');
+    if(imgEl) {
+       imgEl.src = dataUrl;
+       imgEl.style.display = 'block';
+    }
+    if(avEl) avEl.style.display = 'none';
+    
+    if (APP.user && REGISTRY[APP.user]) {
+        REGISTRY[APP.user].avatar = dataUrl;
+        if(typeof saveRegistry === 'function') saveRegistry();
+        else try{localStorage.setItem('zh_registry',JSON.stringify(REGISTRY));}catch(e){}
+    }
+    toast('Profile image updated!', 'ok');
+  };
+  rd.readAsDataURL(file);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if(APP.user && REGISTRY[APP.user] && REGISTRY[APP.user].avatar) {
+            const imgEl = document.getElementById('prof-avatar-img');
+            const avEl = document.getElementById('prof-avatar');
+            if(imgEl && avEl) {
+               imgEl.src = REGISTRY[APP.user].avatar;
+               imgEl.style.display = 'block';
+               avEl.style.display = 'none';
+            }
+        }
+    }, 1000);
+});

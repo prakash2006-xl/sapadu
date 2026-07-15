@@ -241,12 +241,21 @@ h1,h2,h3,h4{font-family:'Bricolage Grotesque',sans-serif;line-height:1.2}
 .conf-fill.medium-food{background:linear-gradient(90deg,#f59e0b,#ef4444)}
 .conf-fill.spoiled-food{background:linear-gradient(90deg,#ef4444,#7f1d1d)}
 @media(max-width:768px){
-  .g2,.g3{grid-template-columns:1fr!important}
+  .g2,.g3,.row2{grid-template-columns:1fr!important}
   .navbar{padding:0 14px}
   .dash-wrap{padding:14px}
   .login-card{padding:28px 22px}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
-  .chat-wrap{width:calc(100vw - 32px);right:16px;left:auto}
+  .chat-wrap{width:calc(100vw - 32px);right:16px;left:auto;bottom:16px}
+  .chat-box{height:65vh;max-height:450px}
   .fridge-grid{grid-template-columns:repeat(2,1fr)}
   .cert-metrics{grid-template-columns:repeat(2,1fr)}
+  .modal-box{padding:20px;width:95vw;max-width:95vw;margin:0 auto}
+  .table-responsive{display:block;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl th, .tbl td {white-space:nowrap}
+}
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:1fr}
+  .fridge-grid{grid-template-columns:1fr}
+  .cert-metrics{grid-template-columns:1fr}
 }
