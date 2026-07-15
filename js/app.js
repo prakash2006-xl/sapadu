@@ -971,7 +971,7 @@ function renderDonTbl(){
     const dist=haversine(uLat,uLng,+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG));
     const ts=getTrustScore(d.donor_name,'donor');
     const myReq = DB.requests.find(r => Number(r.donation_id) === Number(d.id) && r.req_username === APP.user);
-    const isDonorOwn = d.donor_username === APP.user && d.status === 'requested';
+    const isDonorOwn = d.donor_username === APP.user;
     const isMyRequest = !!myReq;
     let actBtn = '-';
     if (isDonorOwn || isMyRequest) {
