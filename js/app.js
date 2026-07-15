@@ -1445,7 +1445,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   window.addEventListener('popstate',()=>{if(APP.user){history.pushState({loggedIn:true},'','');}});
 
   const savedUser=sessionStorage.getItem('zh_session');
-  const currentPath = window.location.pathname.split('/').pop() || 'index.html';
+  let currentPath = window.location.pathname.split('/').pop() || 'index.html';
+  if (!currentPath.endsWith('.html') && currentPath !== '') currentPath += '.html';
   
   if(savedUser&&REGISTRY[savedUser]){
     await afterLogin(savedUser);
@@ -1453,15 +1454,13 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     // Just run the page-specific render functions with data already in DB
     if(currentPath === 'donor.html'){
         renderDonTbl();
-        setTimeout(()=>initLiveMap('donor-map','donor'), 200);
+        // The map will be initialized by the setInterval below
     } else if(currentPath === 'request.html'){
         renderP2PMatches();
         renderFridge();
         if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
-        setTimeout(()=>initLiveMap('req-map','req'), 200);
     } else if(currentPath === 'volunteer.html'){
         initVolSection();
-        setTimeout(()=>initLiveMap('vol-map','vol'), 200);
     } else if(currentPath === 'admin.html'){
         initAdminDash();
     } else if(currentPath === 'details.html'){
@@ -1480,6 +1479,15 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   setInterval(()=>{
     if(currentPath === 'admin.html' && byId('map') && !APP.maps.admin) {
         initAdminMap();
+    }
+    if(currentPath === 'donor.html' && byId('donor-map') && !APP.maps['donorLiveMap']) {
+        initLiveMap('donor-map', 'donor');
+    }
+    if(currentPath === 'request.html' && byId('req-map') && !APP.maps['reqLiveMap']) {
+        initLiveMap('req-map', 'req');
+    }
+    if(currentPath === 'volunteer.html' && byId('vol-map') && !APP.maps['volLiveMap']) {
+        initLiveMap('vol-map', 'vol');
     }
   },1000);
   

@@ -261,26 +261,19 @@ BEGIN
     END IF;
 END $$;
 
--- Anon upload policies
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies
-        WHERE tablename = 'objects' AND policyname = 'Allow Anon Upload to Avatars'
-    ) THEN
-        EXECUTE 'CREATE POLICY "Allow Anon Upload to Avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = ''avatars'')';
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies
-        WHERE tablename = 'objects' AND policyname = 'Allow Anon Upload to Food Images'
-    ) THEN
-        EXECUTE 'CREATE POLICY "Allow Anon Upload to Food Images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = ''food-images'')';
-    END IF;
-END $$;
+-- ============================================================
+-- STEP 6: DISABLE ROW LEVEL SECURITY (Allows Anon Key Read/Write)
+-- ============================================================
+ALTER TABLE donations        DISABLE ROW LEVEL SECURITY;
+ALTER TABLE requests         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users            DISABLE ROW LEVEL SECURITY;
+ALTER TABLE volunteers       DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ratings          DISABLE ROW LEVEL SECURITY;
+ALTER TABLE trusts           DISABLE ROW LEVEL SECURITY;
+ALTER TABLE fund_requests    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE messages         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_stats   DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- DONE — Database is fully initialised.
