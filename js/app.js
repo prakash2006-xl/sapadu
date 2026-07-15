@@ -21,9 +21,16 @@ function saveRegistry(){
 }
 const REGISTRY = loadRegistry();
 
+// DB schema version — bump this when schema changes to clear stale cache
+const DB_VERSION = 'v4';
+if (sessionStorage.getItem('zh_db_version') !== DB_VERSION) {
+    sessionStorage.removeItem('zh_db');
+    sessionStorage.setItem('zh_db_version', DB_VERSION);
+}
+
 function loadDB(){
-  try{const d=sessionStorage.getItem('zh_db');return d?JSON.parse(d):{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
-  catch(e){return{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
+  try{const d=sessionStorage.getItem('zh_db');return d?JSON.parse(d):{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],platform_stats:null,nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
+  catch(e){return{donations:[],requests:[],volunteers:[],ratings:[],notifications:[],trusts:[],fund_requests:[],messages:[],platform_stats:null,nid:{don:1,req:1,vol:1,notif:1,fund:1,msg:1}};}
 }
 function saveDB(){
   try{sessionStorage.setItem('zh_db',JSON.stringify(DB));}catch(e){}
@@ -47,15 +54,22 @@ async function syncDatabase() {
 
         // --- SUPABASE BACKEND ---
         if (supabaseClient) {
-            const [donRes, reqRes, volRes, ratRes, trustRes, fundRes, msgRes] = await Promise.all([
+            const [donRes, reqRes, volRes, ratRes, trustRes, fundRes, msgRes, statRes, notifRes] = await Promise.all([
                 supabaseClient.from('donations').select('*'),
                 supabaseClient.from('requests').select('*'),
                 supabaseClient.from('volunteers').select('*'),
                 supabaseClient.from('ratings').select('*'),
                 supabaseClient.from('trusts').select('*'),
                 supabaseClient.from('fund_requests').select('*'),
-                supabaseClient.from('messages').select('*')
+                supabaseClient.from('messages').select('*'),
+                supabaseClient.from('platform_stats').select('*').single(),
+                supabaseClient.from('notifications').select('*')
             ]);
+            
+            // Log any individual table errors
+            if (donRes.error) console.error('donations fetch error:', donRes.error);
+            if (reqRes.error) console.error('requests fetch error:', reqRes.error);
+            if (msgRes.error) console.error('messages fetch error:', msgRes.error);
             
             DB.donations = donRes.data || [];
             DB.requests = reqRes.data || [];
@@ -64,10 +78,25 @@ async function syncDatabase() {
             DB.trusts = trustRes.data || [];
             DB.fund_requests = fundRes.data || [];
             DB.messages = msgRes.data || [];
+            DB.platform_stats = statRes?.data || null;
+            DB.notifications = notifRes.data || [];
             saveDB();
+            
+            // Update debug status if element exists
+            const dbg = document.getElementById('db-debug');
+            if (dbg) {
+                dbg.textContent = `✅ Supabase connected — ${DB.donations.length} donation(s), ${DB.requests.length} request(s), ${DB.messages.length} message(s) loaded at ${new Date().toLocaleTimeString()}`;
+                dbg.style.color = DB.donations.length > 0 ? '#059669' : '#b45309';
+            }
+        } else {
+            const dbg = document.getElementById('db-debug');
+            if (dbg) { dbg.textContent = '❌ Supabase client not initialised. Check API keys.'; dbg.style.color = '#dc2626'; }
+            console.error('supabaseClient is undefined — check Supabase CDN and api_keys.js');
         }
     } catch (e) {
         console.error("Sync error:", e);
+        const dbg = document.getElementById('db-debug');
+        if (dbg) { dbg.textContent = `❌ Sync error: ${e.message}`; dbg.style.color = '#dc2626'; }
     }
 }
 
@@ -163,9 +192,16 @@ function renderTrustCard(){
 }
 
 function updateProfileCert(){
-  const donCount=DB.donations.length;
-  const avgFresh=donCount>0?(DB.donations.reduce((s,d)=>s+(+d.freshness_score||0),0)/donCount).toFixed(1):'—';
-  const meals=Math.round(DB.donations.reduce((s,d)=>s+d.quantity,0)*0.8);
+  let donCount = 0, avgFresh = '—', meals = 0;
+  if (DB.platform_stats) {
+      donCount = DB.platform_stats.total_donations || 0;
+      avgFresh = donCount > 0 ? (DB.platform_stats.total_freshness_score / donCount).toFixed(1) : '—';
+      meals = DB.platform_stats.total_meals_saved || 0;
+  } else {
+      donCount=DB.donations.length;
+      avgFresh=donCount>0?(DB.donations.reduce((s,d)=>s+(+d.freshness_score||0),0)/donCount).toFixed(1):'—';
+      meals=Math.round(DB.donations.reduce((s,d)=>s+d.quantity,0)*0.8);
+  }
   setTxt('cert-donations',donCount);
   setTxt('cert-freshness',avgFresh);
   setTxt('cert-meals',meals);
@@ -852,21 +888,25 @@ function updateAllLiveMarkers(){
     const txtEl=byId(prefix+'-loc-txt');if(txtEl)txtEl.textContent=`📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}${APP.userAccuracy?` (±${Math.round(APP.userAccuracy)}m)`:''}`;
   });
 }
-function initLiveMap(elId,prefix){
-  const mapKey=prefix+'LiveMap';
-  if(APP.maps[mapKey]){try{APP.maps[mapKey].remove()}catch(e){}delete APP.maps[mapKey];delete APP.maps[mapKey+'_marker'];delete APP.maps[mapKey+'_circle'];}
-  const lat=APP.userLat||DEFAULT_LAT,lng=APP.userLng||DEFAULT_LNG;
-  const el=byId(elId);if(!el)return;
-  try{
-    const m=L.map(elId,{attributionControl:false,zoomControl:true}).setView([lat,lng],17);
-    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3'],maxZoom:20}).addTo(m);
-    APP.maps[mapKey]=m;
-    APP.maps[mapKey+'_circle']=L.circle([lat,lng],{radius:APP.userAccuracy||20,color:'#4285F4',fillColor:'#4285F4',fillOpacity:.15,weight:1.5}).addTo(m);
-    APP.maps[mapKey+'_marker']=L.marker([lat,lng],{icon:L.divIcon({html:`<div style="position:relative;width:22px;height:22px"><div style="position:absolute;inset:0;background:#4285F4;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(66,133,244,.6)"></div></div>`,className:'',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
-    const txtEl=byId(prefix+'-loc-txt');if(txtEl)txtEl.textContent=`📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
-    if(APP.userLat&&APP.userLng)updateAllLiveMarkers();
-    setTimeout(() => { m.invalidateSize(); }, 300);
-  }catch(e){console.error(e);}
+function initLiveMap(elId, prefix) {
+  const mapKey = prefix + 'LiveMap';
+  if (APP.maps[mapKey]) { try { APP.maps[mapKey].remove(); } catch(e){} delete APP.maps[mapKey]; delete APP.maps[mapKey+'_marker']; delete APP.maps[mapKey+'_circle']; }
+  const lat = APP.userLat || DEFAULT_LAT, lng = APP.userLng || DEFAULT_LNG;
+  const el = byId(elId);
+  if (!el) return;
+  try {
+    const m = L.map(elId, { attributionControl: false, zoomControl: true }).setView([lat, lng], 17);
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains: ['mt0','mt1','mt2','mt3'], maxZoom: 20 }).addTo(m);
+    APP.maps[mapKey] = m;
+    APP.maps[mapKey+'_circle'] = L.circle([lat, lng], { radius: APP.userAccuracy||20, color:'#4285F4', fillColor:'#4285F4', fillOpacity:.15, weight:1.5 }).addTo(m);
+    APP.maps[mapKey+'_marker'] = L.marker([lat, lng], { icon: L.divIcon({ html:`<div style="position:relative;width:22px;height:22px"><div style="position:absolute;inset:0;background:#4285F4;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(66,133,244,.6)"></div></div>`, className:'', iconSize:[22,22], iconAnchor:[11,11] }) }).addTo(m);
+    const txtEl = byId(prefix+'-loc-txt');
+    if (txtEl) txtEl.textContent = `📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+    if (APP.userLat && APP.userLng) updateAllLiveMarkers();
+    // Double invalidateSize: first immediate, then after tiles load
+    setTimeout(() => { try { m.invalidateSize(); } catch(e){} }, 100);
+    setTimeout(() => { try { m.invalidateSize(); m.setView([lat, lng], 17); } catch(e){} }, 600);
+  } catch(e) { console.error('Map init error:', elId, e); }
 }
 
 const freshScore=(mfg,exp)=>{const now=new Date(),m=new Date(mfg),e=new Date(exp);const tot=(e-m)/86400000,rem=(e-now)/86400000;return Math.round(Math.max(0,Math.min(1,rem/tot))*100)/10;};
@@ -930,7 +970,13 @@ function renderDonTbl(){
     const ti=FOOD_DB[d.food_type||'raw'];
     const dist=haversine(uLat,uLng,+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG));
     const ts=getTrustScore(d.donor_name,'donor');
-    const actBtn=d.status==='requested'?`<button class="btn btn-sm btn-primary" onclick="openConnectModal(${d.id})">💬 Connect</button>`:'-';
+    const myReq = DB.requests.find(r => Number(r.donation_id) === Number(d.id) && r.req_username === APP.user);
+    const isDonorOwn = d.donor_username === APP.user && d.status === 'requested';
+    const isMyRequest = !!myReq;
+    let actBtn = '-';
+    if (isDonorOwn || isMyRequest) {
+        actBtn = `<button class="btn btn-sm btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.4);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="openConnectModal(${d.id})">💬 Connect</button>`;
+    }
     return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td><span style="font-size:1rem">${ti.icon}</span> ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td>${getDistBadge(dist)}</td><td>${d.expiry_days}d</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td><td>${actBtn}</td></tr>`;
   }).join('');
 }
@@ -938,9 +984,7 @@ function renderDonTbl(){
 function initReqSection(){
     renderP2PMatches();
     renderFridge();
-    setTimeout(() => {
-        if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
-    }, 100);
+    if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
 }
 
 const requestForm = document.getElementById('request-form');
@@ -951,7 +995,7 @@ if(requestForm) requestForm.addEventListener('submit', async e=>{
   const donId=+byId('req-food-sel').value;
   if(!donId){toast('Please select a food item','err');return}
   const qty=+f.req_qty.value;if(!qty||qty<=0){toast('Enter valid quantity','err');return}
-  const don=DB.donations.find(d=>d.id===donId);if(!don){toast('Food not found','err');return}
+  const don=DB.donations.find(d=>Number(d.id)===Number(donId));if(!don){toast('Food not found','err');return}
   
   if (don.donor_name !== 'Community Pool') {
       const finalQty = checkQuantityNegotiation(qty, parseInt(don.quantity||"9999"), don.donor_name, 'donation', don.id);
@@ -1099,29 +1143,63 @@ function renderDetailTables(){
 
 function openConnectModal(donationId) {
     const don = DB.donations.find(d => Number(d.id) === Number(donationId));
+    if (!don) { toast('Donation not found!', 'err'); return; }
+    
     const req = DB.requests.find(r => Number(r.donation_id) === Number(donationId));
-    if (!don || !req) {
-        toast('Receiver details not found!', 'err');
+    // If no request yet (donor viewing their own available donation), show a message
+    if (!req) {
+        showModal(`
+            <div class="modal-head">
+                <span class="modal-title">💬 P2P Connect: ${esc(don.food_name)}</span>
+                <button class="x-btn" onclick="closeModal()">✕</button>
+            </div>
+            <div style="padding:30px;text-align:center;color:var(--txt2)">
+                <div style="font-size:3rem;margin-bottom:12px">⏳</div>
+                <strong>Waiting for a receiver to request this food.</strong><br>
+                <p style="font-size:.85rem;margin-top:8px">Once someone submits a request, the chat will be available here.</p>
+            </div>
+        `);
         return;
     }
+
     const otherUser = APP.user === don.donor_username ? req.req_username : don.donor_username;
     const msgs = DB.messages.filter(m => Number(m.context_id) === Number(donationId) && m.context_type === 'donation').sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
     
+    const isDonor = APP.user === don.donor_username;
+    const confirmedByMe = isDonor ? req.donor_confirmed : req.receiver_confirmed;
+    const confirmedByOther = isDonor ? req.receiver_confirmed : req.donor_confirmed;
+    
+    let handoffHtml = '';
+    if (confirmedByMe && confirmedByOther) {
+        handoffHtml = `<div style="padding:12px 16px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);color:#166534;font-weight:700;text-align:center;border-bottom:1px solid #86efac;font-size:0.9rem;letter-spacing:.5px">✅ Handoff Successfully Completed! Thank you! 🙏</div>`;
+    } else if (confirmedByMe) {
+        handoffHtml = `<div style="padding:12px 16px;background:linear-gradient(135deg,#fef9c3,#fef08a);color:#854d0e;text-align:center;border-bottom:1px solid #fde047;font-size:0.85rem;font-weight:600">⏳ You confirmed! Waiting for ${isDonor ? 'receiver' : 'donor'} to also confirm...</div>`;
+    } else {
+        handoffHtml = `<div style="padding:10px 16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-bottom:2px solid #86efac;display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <div>
+                <div style="font-size:.85rem;font-weight:700;color:#166534">🤝 Delivery Handshake</div>
+                <div style="font-size:.78rem;color:#15803d">Did you ${isDonor ? '📦 deliver' : '✅ receive'} the food?</div>
+            </div>
+            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-weight:700;font-size:.82rem;cursor:pointer;box-shadow:0 3px 10px rgba(16,185,129,.4);transition:all .2s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="confirmHandoff(${req.id})">🤝 Confirm Handoff</button>
+        </div>`;
+    }
+
     showModal(`
         <div class="modal-head">
             <span class="modal-title">💬 P2P Connect: ${esc(don.food_name)}</span>
             <button class="x-btn" onclick="closeModal()">✕</button>
         </div>
-        <div style="padding:14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.85rem;color:var(--txt2)">
-            Coordinating with: <strong>${esc(APP.user === don.donor_username ? req.req_name : don.donor_name)}</strong><br>
-            Food: <strong>${esc(don.food_name)} (${req.quantity} units)</strong>
+        <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.85rem;color:var(--txt2);display:flex;justify-content:space-between;align-items:center">
+            <span>Coordinating with: <strong>${esc(isDonor ? req.req_name : don.donor_name)}</strong></span>
+            <span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:99px;font-size:.75rem;font-weight:600">${esc(don.food_name)} · ${req.quantity} units</span>
         </div>
+        ${handoffHtml}
         <div id="chat-msgs-container" style="padding:14px;height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;background:#fff">
-            ${msgs.length ? msgs.map(m => `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${m.sender_username===APP.user?'align-self:flex-end;background:var(--g2);color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;background:#f1f5f9;color:var(--txt);border-bottom-left-radius:2px'}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:20px">No messages yet. Say hi! 👋</div>'}
+            ${msgs.length ? msgs.map(m => `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${m.sender_username===APP.user?'align-self:flex-end;background:linear-gradient(135deg,var(--g1,#10b981),var(--g2,#059669));color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;background:#f1f5f9;color:var(--txt);border-bottom-left-radius:2px'}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:30px">No messages yet. Say hi! 👋</div>'}
         </div>
-        <div style="padding:14px;border-top:1px solid #e2e8f0;display:flex;gap:8px">
-            <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);outline:none">
-            <button class="btn btn-primary" onclick="sendP2PMessage(${donationId}, '${otherUser}')">Send</button>
+        <div style="padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;background:#fafafa">
+            <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:20px;outline:none;font-size:.85rem;background:#fff;transition:border .2s" onfocus="this.style.border='1.5px solid #10b981'" onblur="this.style.border='1.5px solid #e2e8f0'">
+            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:10px 18px;border-radius:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="sendP2PMessage(${donationId}, '${otherUser}')">Send ↗</button>
         </div>
     `);
     
@@ -1135,6 +1213,29 @@ function openConnectModal(donationId) {
         }
     }, 100);
 }
+
+window.confirmHandoff = async function(reqId) {
+    if (!supabaseClient) { toast('Database not connected', 'err'); return; }
+    const req = DB.requests.find(r => Number(r.id) === Number(reqId));
+    if (!req) return;
+    const don = DB.donations.find(d => Number(d.id) === Number(req.donation_id));
+    const isDonor = APP.user === (don ? don.donor_username : '');
+    
+    const updates = isDonor ? { donor_confirmed: true } : { receiver_confirmed: true };
+    try {
+        const { error } = await supabaseClient.from('requests').update(updates).eq('id', reqId);
+        if (error) throw error;
+        toast('Handoff confirmed successfully!', 'ok');
+        
+        // Let the DB trigger handle deletion/deduction if both are true. 
+        // We just need to sync the local DB.
+        await syncDatabase();
+        closeModal();
+    } catch (e) {
+        console.error(e);
+        toast('Error confirming handoff', 'err');
+    }
+};
 
 async function sendP2PMessage(donationId, receiverUsername) {
     const inp = byId('p2p-chat-input');
@@ -1348,16 +1449,27 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   
   if(savedUser&&REGISTRY[savedUser]){
     await afterLogin(savedUser);
-    
-    // Initialize specific page logic based on current page
-    if(currentPath === 'donor.html'){ renderDonTbl(); initLiveMap('donor-map','donor'); }
-    else if(currentPath === 'request.html'){ initReqSection(); initLiveMap('req-map','req'); }
-    else if(currentPath === 'volunteer.html'){ initVolSection(); initLiveMap('vol-map','vol'); }
-    else if(currentPath === 'admin.html'){ initAdminDash(); }
-    else if(currentPath === 'details.html'){ 
-        APP.prevPage='admin-page'; 
+    // afterLogin already calls syncDatabase() once — no need to call again
+    // Just run the page-specific render functions with data already in DB
+    if(currentPath === 'donor.html'){
+        renderDonTbl();
+        setTimeout(()=>initLiveMap('donor-map','donor'), 200);
+    } else if(currentPath === 'request.html'){
+        renderP2PMatches();
+        renderFridge();
+        if(byId('req-food-sel')) populateFoodDropdown('req-food-sel');
+        setTimeout(()=>initLiveMap('req-map','req'), 200);
+    } else if(currentPath === 'volunteer.html'){
+        initVolSection();
+        setTimeout(()=>initLiveMap('vol-map','vol'), 200);
+    } else if(currentPath === 'admin.html'){
+        initAdminDash();
+    } else if(currentPath === 'details.html'){
+        APP.prevPage='admin-page';
         renderDetailTables();
         renderRatingsList();
+    } else if(currentPath === 'trust.html'){
+        initTrustDashboard();
     }
   } else {
     if (currentPath !== 'index.html' && currentPath !== '') {
@@ -1371,7 +1483,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     }
   },1000);
   
-  if(currentPath === 'trust.html'){ initTrustDashboard(); }
+  if(currentPath === 'trust.html' && !savedUser){ initTrustDashboard(); }
 });
 
 /* =====================================================
