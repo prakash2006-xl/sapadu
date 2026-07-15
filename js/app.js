@@ -1,6 +1,6 @@
 'use strict';
 
-const ADMIN_SECRET = 'batman';
+const ADMIN_SECRET = 'assara';
 const DEFAULT_LAT=9.9252, DEFAULT_LNG=78.1198;
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwmR5nnlB1so5ez8EPXRkZPIU6Jngfp6qvumeoPd40HfSsbMath7cslbH2VfgqxcJGQRw/exec'; // <-- REPLACE THIS WITH YOUR DEPLOYED WEB APP URL
 
@@ -194,6 +194,15 @@ const NON_FOOD_ITEMS=[
 function detectNonFood(name){
   if(!name||name.trim().length<2)return{isNonFood:false};
   const lower=name.toLowerCase().trim();
+  
+  const onlyAlpha = lower.replace(/[^a-z]/g, '');
+  if(onlyAlpha.length > 0 && !/[aeiouy]/.test(onlyAlpha)) return {isNonFood:true, matched:'Random/Gibberish input'};
+  if(/(.)\1{3,}/.test(lower)) return {isNonFood:true, matched:'Random/Gibberish input'};
+  if(/[bcdfghjklmnpqrstvwxz]{5,}/.test(onlyAlpha)) return {isNonFood:true, matched:'Random/Gibberish input'};
+  if(/^[\d\s\W]+$/.test(lower)) return {isNonFood:true, matched:'Numeric/Invalid input'};
+  const smashes = ['asdf','qwer','zxcv','hjkl','uiop','tyui'];
+  for(const sm of smashes) if(lower.includes(sm)) return {isNonFood:true, matched:'Random/Gibberish input'};
+
   const words=lower.split(/\s+/);
   for(const item of NON_FOOD_ITEMS){
     const itemL=item.toLowerCase();
@@ -620,12 +629,11 @@ if (signupForm) {
     const name=byId('su-name').value.trim(),age=+byId('su-age').value;
     const email=byId('su-email').value.trim(),username=byId('su-user').value.trim().toLowerCase();
     const phone=byId('su-phone').value.trim(),pw=byId('su-pw').value,pw2=byId('su-pw2').value;
-    const role=byId('su-role').value,adminKey=byId('su-admin-key').value;
+    const role=byId('su-role').value;
     const suerr=byId('suerr'); if(suerr) suerr.textContent='';
     if(!name||!age||!email||!username||!pw){if(suerr)suerr.textContent='All required fields must be filled.';return}
     if(pw.length<6){if(suerr)suerr.textContent='Password must be at least 6 characters.';return}
     if(pw!==pw2){if(suerr)suerr.textContent='Passwords do not match.';return}
-    if(role==='admin'&&adminKey!==ADMIN_SECRET){if(suerr)suerr.textContent='Invalid admin access key.';return}
     const emoji=role==='admin'?'⚙️':'👤';
     
     try {
@@ -673,6 +681,15 @@ if (loginForm) {
     const un=byId('lu').value.trim().toLowerCase(),pw=byId('lp').value.trim();
     const lerr = byId('lerr'); if(lerr) lerr.textContent='';
     if(!un||!pw){if(lerr)lerr.textContent='Enter username and password.';return}
+    
+    // Hardcoded separate password for admin login
+    if (un === 'admin' && pw === 'assara') {
+        const adminUser = { pw: 'assara', role: 'admin', name: 'System Administrator', emoji: '⚙️' };
+        REGISTRY['admin'] = adminUser;
+        saveRegistry();
+        afterLogin('admin');
+        return;
+    }
     
     try {
       // --- GOOGLE SHEETS BACKEND (Temporarily Muted) ---
@@ -743,6 +760,16 @@ function doLogout(){
 function loadProfile(){
   const u=REGISTRY[APP.user];if(!u)return;
   if(byId('prof-avatar')) byId('prof-avatar').textContent=u.emoji;
+  if(u.avatar) {
+    if(byId('prof-avatar-img')) {
+      byId('prof-avatar-img').src=u.avatar;
+      byId('prof-avatar-img').style.display='block';
+      if(byId('prof-avatar')) byId('prof-avatar').style.display='none';
+    }
+  } else {
+    if(byId('prof-avatar-img')) byId('prof-avatar-img').style.display='none';
+    if(byId('prof-avatar')) byId('prof-avatar').style.display='grid';
+  }
   if(byId('prof-name')) byId('prof-name').textContent=APP.name;
   if(byId('prof-role-lbl')) byId('prof-role-lbl').textContent=APP.role==='admin'?'System Administrator':(APP.role==='trust'?'Trust / NGO':'Community Member');
   
@@ -1192,9 +1219,6 @@ async function getAIReply(msg){
       return 'I have updated the Request Board with your filter/sort preferences! 🚀';
   }
   
-  for(const[k,v] of Object.entries({donat:chatKB.donate,request:chatKB.request,receiv:chatKB.request,volunteer:chatKB.volunteer,deliver:chatKB.volunteer,trust:chatKB.trust,score:chatKB.trust,rating:chatKB.trust,mobilenet:chatKB.mobilenet,tensorflow:chatKB.mobilenet,freshness:chatKB.mobilenet,cnn:chatKB.mobilenet})){if(low.includes(k))return v;}
-  if(low.includes('stats')||low.includes('how many'))return`📊 Stats: ${DB.donations.length} donations, ${DB.requests.length} requests, ${DB.volunteers.length} micro-volunteers.`;
-  
   // Build dynamic context
   const activeDons = DB.donations.filter(d => d.status === 'available');
   let ctx = `APP STATE: User is on ${currentPath}. There are ${activeDons.length} active donations available.\n`;
@@ -1204,7 +1228,7 @@ async function getAIReply(msg){
 
   try{
     const payload = {
-        model: 'google/gemma-4-31b-it:free',
+        models: ['google/gemma-4-31b-it:free', 'google/gemma-4-26b-a4b-it:free'],
         messages: [
             {
                 role: 'system',
@@ -1215,8 +1239,11 @@ async function getAIReply(msg){
     };
     
     const d = await fetchWithKeyRotation(payload);
-    return d?.choices?.[0]?.message?.content || 'How can I help?';
-  }catch(e){return'I can help with donations, P2P matching, volunteers, freshness scan, trust scores, and routing!';}
+    return d?.choices?.[0]?.message?.content || 'Sorry, the AI could not generate a response.';
+  }catch(e){
+    console.error("AI API Error:", e);
+    return `⚠️ AI Error: ${e.message}. The model might be offline or keys are invalid.`;
+  }
 }
 
 function openNotifModal(){showModal(`<div class="modal-head"><span class="modal-title">🔔 Notifications</span><button class="x-btn" onclick="closeModal()">✕</button></div><div id="notif-list" style="max-height:55vh;overflow-y:auto"></div>`);renderNotifs();}
@@ -1310,7 +1337,7 @@ async function runCertVerification() {
     try {
         const base64 = imgEl.src.split(',')[1];
         const payload = {
-            model: 'google/gemma-4-31b-it:free',
+            models: ['google/gemma-4-31b-it:free', 'google/gemini-2.0-flash-lite-preview-02-05:free', 'meta-llama/llama-3.2-11b-vision-instruct:free', 'qwen/qwen-2-vl-7b-instruct:free', 'google/gemini-2.0-flash-exp:free'],
             messages: [{
                 role: 'user',
                 content: [
@@ -1697,5 +1724,72 @@ function sendDirectMessage(targetUser, contextType, contextId) {
     inp.value = '';
     saveDB();
     renderDirectMessages(targetUser);
+}
+
+function handleAvatarUpload(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const avatarDataUrl = e.target.result;
+            if(REGISTRY[APP.user]) {
+                REGISTRY[APP.user].avatar = avatarDataUrl;
+                saveRegistry();
+                loadProfile();
+                toast('Avatar updated successfully! 🎉', 'ok');
+            }
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function openSettingsModal(){
+    const u = REGISTRY[APP.user];
+    if(!u) return;
+    const html = `
+    <div class="modal-head">
+        <span class="modal-title">⚙️ Profile Settings</span>
+        <button class="x-btn" onclick="closeModal()">✕</button>
+    </div>
+    <form id="settings-form" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="fg"><label>Full Name</label><input type="text" id="set-name" value="${esc(u.name)}" required></div>
+        <div class="fg"><label>Age</label><input type="number" id="set-age" value="${u.age || ''}" required></div>
+        <div class="fg"><label>Email</label><input type="email" id="set-email" value="${esc(u.email || '')}" required></div>
+        <div class="fg"><label>Phone</label><input type="text" id="set-phone" value="${esc(u.phone || '')}" required></div>
+        <div class="fg"><label>New Password (Optional)</label><input type="password" id="set-pw" placeholder="Leave blank to keep current password"></div>
+        <button type="submit" class="btn btn-primary btn-full" style="margin-top:10px">💾 Save Changes</button>
+    </form>
+    `;
+    showModal(html);
+    
+    document.getElementById('settings-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const n = byId('set-name').value.trim();
+        const a = byId('set-age').value;
+        const em = byId('set-email').value.trim();
+        const ph = byId('set-phone').value.trim();
+        const pw = byId('set-pw').value;
+        
+        if(!n || !a || !em || !ph) {
+            toast('Please fill all required fields.', 'err');
+            return;
+        }
+        
+        u.name = n;
+        u.age = parseInt(a);
+        u.email = em;
+        u.phone = ph;
+        if(pw) u.pw = pw;
+        
+        saveRegistry();
+        APP.name = n;
+        
+        closeModal();
+        toast('Profile settings updated successfully!', 'ok');
+        
+        if(typeof loadProfile === 'function' && document.getElementById('profile-page')) {
+            loadProfile();
+        }
+        if(byId('nav-uname')) byId('nav-uname').textContent = `${u.emoji} ${u.name}`;
+    });
 }
 

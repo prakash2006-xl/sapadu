@@ -49,11 +49,7 @@
           <select id="su-role" onchange="handleRoleChange(this.value)">
             <option value="user">👤 Community Member (Donor / Receiver / Micro-Volunteer)</option>
             <option value="trust">🏛️ Trust / NGO (Certified Requester)</option>
-            <option value="admin">⚙️ Admin</option>
           </select>
-        </div>
-        <div id="su-admin-key-wrap" style="display:none">
-          <div class="fg"><label>Admin Access Key *</label><input id="su-admin-key" type="password" placeholder="Enter your admin access key"></div>
         </div>
         <div id="suerr" style="color:var(--r1);font-size:.8rem;margin-bottom:12px;min-height:18px"></div>
         <button type="submit" class="btn btn-primary btn-full">🚀 Create Account</button>
@@ -85,7 +81,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/api_keys.js"></script>
-<script src="js/app.js"></script>
+<script src="js/api_keys.js?v=2"></script>
+<script src="js/app.js?v=2"></script>
 </body>
 </html>

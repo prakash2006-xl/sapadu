@@ -17,6 +17,7 @@
   <div class="nav-right">
     <span class="nav-user" id="nav-uname"></span>
     <span class="notif-badge" id="notif-count" onclick="openNotifModal()">0</span>
+    <button class="btn btn-sm btn-ghost" onclick="openSettingsModal()">⚙️ Settings</button>
     <button class="btn btn-sm btn-ghost" onclick="doLogout()">🚪 Logout</button>
   </div>
 </nav>
@@ -38,7 +39,12 @@
 </div>
 <div id="profile-page" class="page active">
   <div class="prof-top">
-    <div class="prof-avatar-big" id="prof-avatar">👤</div>
+    <div class="prof-avatar-wrap" onclick="document.getElementById('avatar-upload').click()">
+      <div class="prof-avatar-big" id="prof-avatar">👤</div>
+      <img src="" alt="avatar" class="prof-avatar-img" id="prof-avatar-img">
+      <div class="prof-avatar-overlay">📷</div>
+      <input type="file" id="avatar-upload" style="display:none" accept="image/*" onchange="handleAvatarUpload(this)">
+    </div>
     <div class="prof-name" id="prof-name"></div>
     <div style="font-size:.85rem;opacity:.8;margin-top:4px" id="prof-role-lbl"></div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap" id="prof-info-row"></div>
