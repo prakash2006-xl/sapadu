@@ -833,7 +833,8 @@ function loadProfile(){
     ?[{k:'trust',ico:'🏛️',t:'Trust Portal',d:'Request donations and funds with AI verified Trust ID.'}]
     :[{k:'donor',ico:'🎁',t:'Donor Module',d:'Donate food with TensorFlow MobileNet freshness scan & expiry prediction.'},
       {k:'request',ico:'📦',t:'Receiver Module (P2P)',d:'Request fresh food with AI proximity matching & community fridge.'},
-      {k:'volunteer',ico:'🚗',t:'Micro-Volunteer Module',d:'Register as micro-volunteer with parking radar & smart routing.'}];
+      {k:'volunteer',ico:'🚗',t:'Micro-Volunteer Module',d:'Register as micro-volunteer with parking radar & smart routing.'},
+      {k:'activity',ico:'<i class="bx bx-pulse"></i>',t:'My Live Activity',d:'View your live donations, history, requests, and P2P chats.'}];
       
   if(byId('prof-modules')) {
     byId('prof-modules').innerHTML=mods.map(m=>`<div class="module-card" onclick="handleModClick('${m.k}')"><div class="mod-icon">${m.ico}</div><h3 style="font-size:1rem;font-weight:700;margin-bottom:4px">${m.t}</h3><p style="font-size:.82rem;color:var(--txt2)">${m.d}</p></div>`).join('');
@@ -853,6 +854,7 @@ function handleModClick(k){
   if(k==='request'){showPage('request-page');initReqSection();initLiveMap('req-map','req');return}
   if(k==='volunteer'){showPage('volunteer-page');initVolSection();initLiveMap('vol-map','vol');return}
   if(k==='trust'){showPage('trust-page');initTrustDashboard();return}
+  if(k==='activity'){showPage('activity-page');renderMyActivity();return}
 }
 function goBack(){
   const prev = sessionStorage.getItem('zh_prevPage') || 'profile-page';
@@ -970,16 +972,82 @@ function renderDonTbl(){
     const ti=FOOD_DB[d.food_type||'raw'];
     const dist=haversine(uLat,uLng,+(d.lat||DEFAULT_LAT),+(d.lng||DEFAULT_LNG));
     const ts=getTrustScore(d.donor_name,'donor');
-    const myReq = DB.requests.find(r => Number(r.donation_id) === Number(d.id) && r.req_username === APP.user);
-    const uStr = String(APP.user||'').toLowerCase().trim();
-    const isDonorOwn = (String(d.donor_username||'').toLowerCase().trim() === uStr) || (String(d.donor_name||'').toLowerCase().trim() === String(APP.name||'').toLowerCase().trim());
-    const isMyRequest = !!myReq;
-    let actBtn = '-';
-    if (isDonorOwn || isMyRequest) {
-        actBtn = `<button class="btn btn-sm btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.4);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="openConnectModal(${d.id})">💬 Connect</button>`;
-    }
-    return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td><span style="font-size:1rem">${ti.icon}</span> ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td>${getDistBadge(dist)}</td><td>${d.expiry_days}d</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td><td>${actBtn}</td></tr>`;
+    return`<tr><td><strong>${esc(d.donor_name)}</strong></td><td>${esc(d.food_name)}</td><td><span style="font-size:1rem">${ti.icon}</span> ${ti.label}</td><td>${d.quantity}</td><td><span class="badge ${fClass(d.freshness_score)}">${d.freshness_score}/10</span></td><td>${getDistBadge(dist)}</td><td>${d.expiry_days}d</td><td>${esc(d.location_label)}</td><td><span class="badge ${d.pay_type==='online'?'bg-b':'bg-t'}">${d.pay_type==='online'?'💳':'💵'}</span></td><td style="color:${ts.hasRating?ts.color:'var(--txt3)'};font-size:.78rem;font-weight:600">${ts.hasRating?`${ts.score}/100`:'-'}</td><td><span class="badge ${sBadge(d.status)}">${d.status}</span></td></tr>`;
   }).join('');
+}
+
+window.renderMyActivity = function() {
+    const tb = byId('my-activity-tbody');
+    if (!tb) return;
+    
+    const uStr = String(APP.user || '').toLowerCase().trim();
+    const myDonations = DB.donations.filter(d => 
+        String(d.donor_username || '').toLowerCase().trim() === uStr || 
+        String(d.donor_name || '').toLowerCase().trim() === String(APP.name || '').toLowerCase().trim()
+    );
+    const myRequests = DB.requests.filter(r => 
+        String(r.req_username || '').toLowerCase().trim() === uStr || 
+        String(r.req_name || '').toLowerCase().trim() === String(APP.name || '').toLowerCase().trim()
+    );
+
+    let rows = [];
+
+    // Process Donations
+    myDonations.forEach(d => {
+        const reqs = DB.requests.filter(r => Number(r.donation_id) === Number(d.id));
+        const hasReq = reqs.length > 0;
+        const partner = hasReq ? reqs[0].req_name : 'Waiting...';
+        
+        let actBtn = '-';
+        if (hasReq && ['requested', 'assigned', 'accepted'].includes(d.status.toLowerCase())) {
+            actBtn = `<button class="btn btn-sm btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.4);transition:transform .15s" onclick="openConnectModal(${d.id})"><i class='bx bx-message-rounded-dots'></i> Chat</button>`;
+        } else if (d.status.toLowerCase() === 'done') {
+            actBtn = `<span style="color:#16a34a;font-weight:600">✅ Completed</span>`;
+        } else if (d.status.toLowerCase() === 'available') {
+             actBtn = `<span style="color:#d97706;font-weight:600">⏳ Waiting</span>`;
+        }
+        
+        rows.push(`<tr>
+            <td><span class="badge" style="background:#e0e7ff;color:#4338ca">Donor</span></td>
+            <td>${esc(d.food_name)}</td>
+            <td>${d.quantity}</td>
+            <td><span class="badge ${sBadge(d.status)}">${d.status}</span></td>
+            <td>${esc(partner)}</td>
+            <td>${actBtn}</td>
+        </tr>`);
+    });
+
+    // Process Requests
+    myRequests.forEach(r => {
+        const don = DB.donations.find(d => Number(d.id) === Number(r.donation_id));
+        const partner = don ? don.donor_name : 'Unknown';
+        
+        let actBtn = '-';
+        if (r.status.toLowerCase() !== 'pending') {
+            if (['assigned', 'accepted'].includes(r.status.toLowerCase()) || don?.status === 'requested') {
+                 actBtn = `<button class="btn btn-sm btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.4);transition:transform .15s" onclick="openConnectModal(${r.donation_id})"><i class='bx bx-message-rounded-dots'></i> Chat</button>`;
+            } else if (r.status.toLowerCase() === 'done' || don?.status === 'done') {
+                 actBtn = `<span style="color:#16a34a;font-weight:600">✅ Completed</span>`;
+            }
+        } else {
+             actBtn = `<span style="color:#d97706;font-weight:600">⏳ Pending</span>`;
+        }
+
+        rows.push(`<tr>
+            <td><span class="badge" style="background:#dcfce7;color:#166534">Receiver</span></td>
+            <td>${esc(r.food_name)}</td>
+            <td>${r.quantity}</td>
+            <td><span class="badge ${sBadge(r.status)}">${r.status}</span></td>
+            <td>${esc(partner)}</td>
+            <td>${actBtn}</td>
+        </tr>`);
+    });
+
+    if (rows.length === 0) {
+        tb.innerHTML = '<tr><td colspan="6" class="empty">No activity found.</td></tr>';
+    } else {
+        tb.innerHTML = rows.join('');
+    }
 }
 
 function initReqSection(){
@@ -1197,11 +1265,16 @@ function openConnectModal(donationId) {
         </div>
         ${handoffHtml}
         <div id="chat-msgs-container" style="padding:14px;height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;background:#fff">
-            ${msgs.length ? msgs.map(m => `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${m.sender_username===APP.user?'align-self:flex-end;background:linear-gradient(135deg,var(--g1,#10b981),var(--g2,#059669));color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;background:#f1f5f9;color:var(--txt);border-bottom-left-radius:2px'}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:30px">No messages yet. Say hi! 👋</div>'}
+            ${msgs.length ? msgs.map(m => {
+                const isMsgDonor = (String(m.sender_username||'').toLowerCase().trim() === String(don.donor_username||'').toLowerCase().trim());
+                const isMe = m.sender_username === APP.user;
+                const bg = isMsgDonor ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#10b981,#059669)';
+                return `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${isMe?'align-self:flex-end;color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;color:#fff;border-bottom-left-radius:2px'};background:${bg}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`;
+            }).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:30px">No messages yet. Say hi! 👋</div>'}
         </div>
         <div style="padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;background:#fafafa">
             <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:20px;outline:none;font-size:.85rem;background:#fff;transition:border .2s" onfocus="this.style.border='1.5px solid #10b981'" onblur="this.style.border='1.5px solid #e2e8f0'">
-            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:10px 18px;border-radius:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="sendP2PMessage(${donationId}, '${otherUser}')">Send ↗</button>
+            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:10px 18px;border-radius:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="sendP2PMessage(${donationId}, '${otherUser}', ${isDonor})">Send ↗</button>
         </div>
     `);
     
@@ -1211,8 +1284,29 @@ function openConnectModal(donationId) {
         const i = byId('p2p-chat-input');
         if (i) {
             i.focus();
-            i.onkeydown = (e) => { if (e.key === 'Enter') sendP2PMessage(donationId, otherUser); };
+            i.onkeydown = (e) => { if (e.key === 'Enter') sendP2PMessage(donationId, otherUser, isDonor); };
         }
+        
+        window.chatPollInterval = setInterval(async () => {
+            if (supabaseClient) {
+                const { data } = await supabaseClient.from('messages').select('*').eq('context_id', donationId).eq('context_type', 'donation');
+                if (data && data.length > msgs.length) {
+                    await syncDatabase(); // Update DB.messages globally
+                    const cContainer = byId('chat-msgs-container');
+                    if (cContainer) {
+                        const newMsgs = DB.messages.filter(m => Number(m.context_id) === Number(donationId) && m.context_type === 'donation').sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+                        cContainer.innerHTML = newMsgs.map(m => {
+                            const isMsgDonor = (String(m.sender_username||'').toLowerCase().trim() === String(don.donor_username||'').toLowerCase().trim());
+                            const isMe = m.sender_username === APP.user;
+                            const bg = isMsgDonor ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#10b981,#059669)';
+                            return `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${isMe?'align-self:flex-end;color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;color:#fff;border-bottom-left-radius:2px'};background:${bg}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`;
+                        }).join('');
+                        cContainer.scrollTop = cContainer.scrollHeight;
+                        msgs.length = data.length; // update count to prevent re-rendering identical lists
+                    }
+                }
+            }
+        }, 2500);
     }, 100);
 }
 
@@ -1240,7 +1334,7 @@ window.confirmHandoff = async function(reqId) {
     }
 };
 
-async function sendP2PMessage(donationId, receiverUsername) {
+async function sendP2PMessage(donationId, receiverUsername, isDonor) {
     const inp = byId('p2p-chat-input');
     const text = inp.value.trim();
     if (!text) return;
@@ -1260,7 +1354,8 @@ async function sendP2PMessage(donationId, receiverUsername) {
     const c = byId('chat-msgs-container');
     if (c) {
         if (c.innerHTML.includes('No messages yet')) c.innerHTML = '';
-        c.innerHTML += `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;align-self:flex-end;background:var(--g2);color:#fff;border-bottom-right-radius:2px">${esc(text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">Just now</div></div>`;
+        const bg = isDonor ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#10b981,#059669)';
+        c.innerHTML += `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;align-self:flex-end;color:#fff;border-bottom-right-radius:2px;background:${bg}">${esc(text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">Just now</div></div>`;
         c.scrollTop = c.scrollHeight;
     }
     
@@ -1442,7 +1537,7 @@ async function getAIReply(msg){
 
 function openNotifModal(){showModal(`<div class="modal-head"><span class="modal-title">🔔 Notifications</span><button class="x-btn" onclick="closeModal()">✕</button></div><div id="notif-list" style="max-height:55vh;overflow-y:auto"></div>`);renderNotifs();}
 function showModal(html){const o=document.createElement('div');o.className='modal-bg';o.id='modal-bg';o.innerHTML=`<div class="modal-box">${html}</div>`;o.addEventListener('click',ev=>{if(ev.target===o)closeModal();});document.body.appendChild(o);}
-function closeModal(){const m=byId('modal-bg');if(m)m.remove();}
+function closeModal(){if(window.chatPollInterval) clearInterval(window.chatPollInterval); const m=byId('modal-bg');if(m)m.remove();}
 
 document.addEventListener('DOMContentLoaded', async ()=>{
   window.addEventListener('popstate',()=>{if(APP.user){history.pushState({loggedIn:true},'','');}});
@@ -1472,6 +1567,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         renderRatingsList();
     } else if(currentPath === 'trust.html'){
         initTrustDashboard();
+    } else if(currentPath === 'activity.html'){
+        if(typeof renderMyActivity === 'function') renderMyActivity();
     }
   } else {
     if (currentPath !== 'index.html' && currentPath !== '') {
