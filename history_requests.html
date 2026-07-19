@@ -39,7 +39,7 @@
   </div>
   <button class="chat-toggle" onclick="toggleChat()" id="chat-toggle-btn" title="AI Assistant">🤖</button>
 </div>
-<div id="profile-page" class="page active">
+<div id="profile-page" class="page" style="display:none">
   <div class="prof-top">
     <div class="prof-avatar-wrap" onclick="document.getElementById('avatar-upload').click()">
       <div class="prof-avatar-big" id="prof-avatar">👤</div>
@@ -74,34 +74,6 @@
       </div>
     </div>
     <div id="user-trust-card" style="margin-bottom:20px"></div>
-    
-    <!-- Animated History Metric Buttons -->
-    <div class="history-metrics-container" id="history-metrics-container">
-      <div onclick="window.location.href='history_donations.html'" class="history-metric-btn don-btn">
-        <div class="hm-glow"></div>
-        <div class="hm-inner">
-          <div class="hm-icon">📜</div>
-          <div>
-            <div class="hm-title">My Donations</div>
-            <div class="hm-count" id="btn-count-don">0</div>
-            <div class="hm-sub">View detailed history ↗</div>
-          </div>
-        </div>
-      </div>
-      
-      <div onclick="window.location.href='history_requests.html'" class="history-metric-btn req-btn">
-        <div class="hm-glow"></div>
-        <div class="hm-inner">
-          <div class="hm-icon">📥</div>
-          <div>
-            <div class="hm-title">My Requests</div>
-            <div class="hm-count" id="btn-count-req">0</div>
-            <div class="hm-sub">View received items ↗</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="module-grid" id="prof-modules"></div>
     <div class="card" style="margin-bottom:20px">
       <div class="card-head"><h3>📍 Live Community Map</h3><span class="loc-tag"><span class="loc-dot"></span>Live</span></div>
@@ -113,21 +85,30 @@
   </div>
 </div>
 
-<div id="activity-page" class="page">
+<div id="history-requests-page" class="page active">
   <div class="dash-wrap">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
       <button class="btn btn-outline btn-sm" onclick="goBack()">← Back</button>
-      <h2 class="sec-title" style="margin:0"><i class="bx bx-pulse" style="font-size: 1.5rem; vertical-align: middle;"></i> My Live Activity</h2>
+      <h2 class="sec-title" style="margin:0">📥 My Received History</h2>
     </div>
+    
+    <!-- Chart Card -->
+    <div class="card" style="margin-top:20px">
+      <div class="card-head"><h3>📊 Requests Analytics</h3></div>
+      <div class="card-body">
+        <canvas id="reqHistoryChart" height="100"></canvas>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:20px">
       <div class="card-head">
-        <h3><i class='bx bx-list-ul'></i> My Donations & Requests</h3>
-        <button class="btn btn-sm btn-outline" onclick="syncDatabase().then(()=>renderMyActivity()).then(()=>toast('Refreshed from Supabase','ok'))">🔄 Refresh</button>
+        <h3>📥 Foods I Have Received</h3>
+        <button class="btn btn-sm btn-outline" onclick="syncDatabase().then(()=>renderMyRequestHistory()).then(()=>toast('Refreshed from Supabase','ok'))">🔄 Refresh</button>
       </div>
       <div class="card-body table-responsive" style="padding:0">
         <table class="tbl">
           <thead><tr><th>Type</th><th>Food</th><th>Qty</th><th>Status</th><th>Partner</th><th>Action</th></tr></thead>
-          <tbody id="my-activity-tbody"><tr><td colspan="6" class="empty">No activity found.</td></tr></tbody>
+          <tbody id="my-history-req-tbody"><tr><td colspan="6" class="empty">No activity found.</td></tr></tbody>
         </table>
       </div>
     </div>
