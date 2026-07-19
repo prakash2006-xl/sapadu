@@ -1297,9 +1297,47 @@ function openConnectModal(donationId) {
     
     const confirmedByMe = isDonor ? req.donor_confirmed : req.receiver_confirmed;
     const confirmedByOther = isDonor ? req.receiver_confirmed : req.donor_confirmed;
+    const isHandshakeComplete = (confirmedByMe && confirmedByOther) || ['done', 'completed', 'expired'].includes((don.status||'').toLowerCase());
+    const createdTime = new Date(req.created_at || Date.now()).toLocaleDateString();
+    
+    const notificationPanelHtml = `
+        <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.8rem;">
+            <div style="font-weight:700;color:var(--g1);margin-bottom:6px;display:flex;align-items:center;gap:6px">
+                <span style="font-size:1.1rem">🔔</span> Security & Tracking Info
+            </div>
+            <ul style="margin:0;padding-left:20px;color:var(--txt2);font-size:.78rem;line-height:1.5">
+                <li><strong style="color:var(--g2)">Status:</strong> ${isHandshakeComplete ? 'Handoff Completed ✅' : 'Handoff Pending ⏳'}</li>
+                <li><strong style="color:var(--g2)">Match Date:</strong> ${createdTime}</li>
+            </ul>
+            <div style="margin-top:8px;padding:8px 10px;background:#fff1f2;border:1px solid #fecaca;border-radius:6px;color:#991b1b;font-weight:600;display:flex;gap:6px;align-items:flex-start">
+                <span>⚠️</span> 
+                <span>Never share sensitive banking details (UPI, Card, CVV) outside the verified Trust Fund modules. This chat is for coordination only.</span>
+            </div>
+        </div>
+    `;
+
+    let chatInputHtml = '';
+    if (isHandshakeComplete) {
+        chatInputHtml = `
+            <div style="padding:14px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;color:#475569;font-weight:600;font-size:.85rem;display:flex;align-items:center;justify-content:center;gap:8px">
+                <span style="font-size:1.1rem">🔒</span> 
+                Chat is securely locked. The handoff has been completed.
+            </div>
+        `;
+    } else {
+        chatInputHtml = `
+            <div style="padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;background:#fafafa">
+                <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:20px;outline:none;font-size:.85rem;background:#fff;transition:border .2s" onfocus="this.style.border='1.5px solid #10b981'" onblur="this.style.border='1.5px solid #e2e8f0'">
+                <button style="background:#fff;color:var(--g1);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" onclick="startChatVoice('p2p-chat-input', false)" title="Voice typing">🎤</button>
+                <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:10px 18px;border-radius:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="sendP2PMessage(${donationId}, '${otherUser}', ${isDonor})">Send ↗</button>
+            </div>
+        `;
+    }
     
     let handoffHtml = '';
-    if (confirmedByMe && confirmedByOther) {
+    if (req.status === 'cancelled') {
+        handoffHtml = `<div style="padding:12px 16px;background:linear-gradient(135deg,#fee2e2,#fecaca);color:#991b1b;font-weight:700;text-align:center;border-bottom:1px solid #fca5a5;font-size:0.9rem;letter-spacing:.5px">❌ This request was cancelled.</div>`;
+    } else if (confirmedByMe && confirmedByOther) {
         handoffHtml = `<div style="padding:12px 16px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);color:#166534;font-weight:700;text-align:center;border-bottom:1px solid #86efac;font-size:0.9rem;letter-spacing:.5px">✅ Handoff Successfully Completed! Thank you! 🙏</div>`;
     } else if (confirmedByMe) {
         handoffHtml = `<div style="padding:12px 16px;background:linear-gradient(135deg,#fef9c3,#fef08a);color:#854d0e;text-align:center;border-bottom:1px solid #fde047;font-size:0.85rem;font-weight:600">⏳ You confirmed! Waiting for ${isDonor ? 'receiver' : 'donor'} to also confirm...</div>`;
@@ -1309,7 +1347,10 @@ function openConnectModal(donationId) {
                 <div style="font-size:.85rem;font-weight:700;color:#166534">🤝 Delivery Handshake</div>
                 <div style="font-size:.78rem;color:#15803d">Did you ${isDonor ? '📦 deliver' : '✅ receive'} the food?</div>
             </div>
-            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-weight:700;font-size:.82rem;cursor:pointer;box-shadow:0 3px 10px rgba(16,185,129,.4);transition:all .2s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="confirmHandoff(${req.id})">🤝 Confirm Handoff</button>
+            <div style="display:flex;gap:8px;">
+                <button style="background:transparent;color:#991b1b;border:1.5px solid #fca5a5;padding:8px 14px;border-radius:20px;font-weight:700;font-size:.82rem;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='transparent'" onclick="cancelRequest(${req.id}, ${donationId})">❌ Cancel</button>
+                <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-weight:700;font-size:.82rem;cursor:pointer;box-shadow:0 3px 10px rgba(16,185,129,.4);transition:all .2s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="confirmHandoff(${req.id})">🤝 Confirm</button>
+            </div>
         </div>`;
     }
 
@@ -1322,6 +1363,7 @@ function openConnectModal(donationId) {
             <span>Coordinating with: <strong>${esc(isDonor ? req.req_name : don.donor_name)}</strong></span>
             <span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:99px;font-size:.75rem;font-weight:600">${esc(don.food_name)} · ${req.quantity} units</span>
         </div>
+        ${notificationPanelHtml}
         ${handoffHtml}
         <div id="chat-msgs-container" style="padding:14px;height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;background:#fff">
             ${msgs.length ? msgs.map(m => {
@@ -1331,10 +1373,7 @@ function openConnectModal(donationId) {
                 return `<div style="max-width:80%;padding:8px 12px;border-radius:12px;font-size:.85rem;${isMe?'align-self:flex-end;color:#fff;border-bottom-right-radius:2px':'align-self:flex-start;color:#fff;border-bottom-left-radius:2px'};background:${bg}">${esc(m.message_text)}<div style="font-size:.65rem;opacity:.7;margin-top:4px;text-align:right">${new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`;
             }).join('') : '<div style="text-align:center;color:var(--txt3);font-size:.8rem;margin-top:30px">No messages yet. Say hi! 👋</div>'}
         </div>
-        <div style="padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;background:#fafafa">
-            <input type="text" id="p2p-chat-input" placeholder="Type a message..." style="flex:1;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:20px;outline:none;font-size:.85rem;background:#fff;transition:border .2s" onfocus="this.style.border='1.5px solid #10b981'" onblur="this.style.border='1.5px solid #e2e8f0'">
-            <button style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:10px 18px;border-radius:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,.3);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" onclick="sendP2PMessage(${donationId}, '${otherUser}', ${isDonor})">Send ↗</button>
-        </div>
+        ${chatInputHtml}
     `);
     
     setTimeout(() => {
@@ -2203,3 +2242,70 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 1000);
 });
+
+
+async function cancelRequest(reqId, donId) {
+    const reason = prompt("Please provide a valid explanation for cancelling this request:");
+    if (!reason || !reason.trim()) {
+        toast("Cancellation requires a valid reason.", "err");
+        return;
+    }
+    try {
+        if (supabaseClient) {
+            // Update request
+            await supabaseClient.from('requests').update({ status: 'cancelled' }).eq('id', reqId);
+            // Revert donation to available
+            await supabaseClient.from('donations').update({ status: 'available' }).eq('id', donId);
+            // Log reason in messages
+            const sysMsg = {
+                sender_username: APP.user,
+                context_id: donId,
+                context_type: 'donation',
+                message_text: `❌ Request Cancelled by ${APP.name || APP.user}. Reason: ${reason.trim()}`
+            };
+            await supabaseClient.from('messages').insert([sysMsg]);
+            await syncDatabase();
+            toast("Request cancelled and logged.", "ok");
+            closeModal();
+            renderDonTbl();
+            renderMyActivity();
+        }
+    } catch (e) {
+        console.error(e);
+        toast("Error cancelling request", "err");
+    }
+}
+
+
+let chatVoiceRec = null;
+function startChatVoice(inputId, autoSend) {
+    if (!checkVoiceSupport()) { toast('⚠️ Voice not supported in this browser.', 'err'); return; }
+    if (chatVoiceRec) {
+        try { chatVoiceRec.stop(); } catch(e){}
+        chatVoiceRec = null;
+        return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    chatVoiceRec = new SR();
+    chatVoiceRec.lang = 'en-IN';
+    chatVoiceRec.interimResults = true;
+    
+    chatVoiceRec.onstart = () => toast('🎤 Listening...', 'info', 2000);
+    chatVoiceRec.onresult = (ev) => {
+        let text = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+            text += ev.results[i][0].transcript;
+        }
+        const inputEl = document.getElementById(inputId);
+        if (inputEl) inputEl.value = text;
+    };
+    chatVoiceRec.onend = () => {
+        chatVoiceRec = null;
+        if (autoSend && document.getElementById(inputId).value.trim() !== '') {
+            if (inputId === 'chat-input') sendChat();
+        }
+    };
+    chatVoiceRec.onerror = () => { chatVoiceRec = null; toast('⚠️ Voice recognition failed', 'err'); };
+    
+    try { chatVoiceRec.start(); } catch(e) { chatVoiceRec = null; }
+}
