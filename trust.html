@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zero Hunger System â€” Premium Trust Portal</title>
+<title>Zero Hunger System — Premium Trust Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -159,50 +159,50 @@
 <div class="toast-wrap" id="toasts"></div>
 <nav class="navbar" id="main-navbar">
   <div class="nav-brand" onclick="goBack()" style="cursor:pointer">
-    <div class="nav-dot" style="background:#38bdf8"></div><span style="font-size:1.1rem;margin-right:8px">â†</span> Home
+    <div class="nav-dot" style="background:#38bdf8"></div><span style="font-size:1.1rem;margin-right:8px">←</span> Home
   </div>
   <div class="nav-right">
     <span class="nav-user" id="nav-uname" style="color:#e2e8f0"></span>
-    <button class="btn btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border:none" onclick="openSettingsModal()">âš™ï¸ Settings</button>
-    <button class="btn btn-sm btn-ghost" onclick="doLogout()">ðŸšª Logout</button>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border:none" onclick="openSettingsModal()">⚙️ Settings</button>
+    <button class="btn btn-sm btn-ghost" onclick="doLogout()">🚪 Logout</button>
   </div>
 </nav>
 
 <div class="chat-wrap" id="chat-wrap">
   <div class="chat-box" id="chat-box">
     <div class="chat-head">
-      <h4>ðŸ¤– <span>Zero Hunger AI Assistant</span></h4>
-      <button class="x-btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="toggleChat()">âœ•</button>
+      <h4>🤖 <span>Zero Hunger AI Assistant</span></h4>
+      <button class="x-btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="toggleChat()">✕</button>
     </div>
     <div class="chat-msgs" id="chat-msgs">
-      <div class="chat-msg bot">ðŸ‘‹ Hello! I'm your Zero Hunger P2P AI assistant. Ask me about donations, requests, volunteers, trust scores, or routing!</div>
+      <div class="chat-msg bot">👋 Hello! I'm your Zero Hunger P2P AI assistant. Ask me about donations, requests, volunteers, trust scores, or routing!</div>
     </div>
     <div class="chat-input-row">
-      <input type="text" id="chat-input" placeholder="Ask anythingâ€¦" onkeydown="if(event.key==='Enter')sendChat()">
-      <button class="chat-send" onclick="sendChat()">âž¤</button>
+      <input type="text" id="chat-input" placeholder="Ask anything…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="chat-send" onclick="sendChat()">➤</button>
     </div>
   </div>
-  <button class="chat-toggle" onclick="toggleChat()" id="chat-toggle-btn" title="AI Assistant">ðŸ¤–</button>
+  <button class="chat-toggle" onclick="toggleChat()" id="chat-toggle-btn" title="AI Assistant">🤖</button>
 </div>
 
 <div id="trust-page" class="page active">
   <div class="premium-dash">
     
     <div class="trust-header">
-      <div class="trust-icon">ðŸ›ï¸</div>
+      <div class="trust-icon">🏛️</div>
       <div style="flex:1">
         <h2 style="margin:0;font-size:1.8rem;font-weight:700;background:linear-gradient(to right, #f8fafc, #94a3b8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;" id="trust-name">Premium Trust Portal</h2>
         <div style="font-size:0.95rem;color:#94a3b8;margin-top:4px">Verified Requester & NGO Dashboard</div>
       </div>
       <div id="trust-status-badge">
-        <span style="background:rgba(245, 158, 11, 0.15);color:#fbbf24;padding:8px 16px;border-radius:99px;font-size:0.85rem;font-weight:600;border:1px solid rgba(245, 158, 11, 0.3);box-shadow:0 0 10px rgba(245, 158, 11, 0.1)">âš ï¸ Unverified Entity</span>
+        <span style="background:rgba(245, 158, 11, 0.15);color:#fbbf24;padding:8px 16px;border-radius:99px;font-size:0.85rem;font-weight:600;border:1px solid rgba(245, 158, 11, 0.3);box-shadow:0 0 10px rgba(245, 158, 11, 0.1)">⚠️ Unverified Entity</span>
       </div>
     </div>
 
     <!-- AI CERTIFICATE VERIFICATION -->
     <div class="glass-card" id="cert-verify-section">
       <div class="glass-head">
-        <span style="font-size:1.5rem">ðŸ”</span>
+        <span style="font-size:1.5rem">🔐</span>
         <h3>AI Document Verification</h3>
       </div>
       <div>
@@ -210,14 +210,14 @@
         
         <input type="file" id="cert-img-upload" accept="image/*" style="display:none" onchange="doCertUpload(this.files[0])">
         <div class="upload-zone-premium" onclick="byId('cert-img-upload').click()">
-          <div style="font-size:3rem;margin-bottom:12px;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.3))">ðŸ“„</div>
+          <div style="font-size:3rem;margin-bottom:12px;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.3))">📄</div>
           <div style="font-weight:600;font-size:1.1rem;color:#f8fafc">Tap to upload Certificate</div>
           <div style="font-size:.8rem;color:#64748b;margin-top:8px">Supports High-Res JPG, PNG</div>
         </div>
         
         <img id="cert-img-prev" style="width:100%;max-height:300px;object-fit:contain;border-radius:12px;margin-top:20px;display:none;background:rgba(0,0,0,0.3);padding:10px">
         
-        <button id="verify-cert-btn" class="premium-btn" style="margin-top:20px;display:none;background:linear-gradient(135deg, #10b981, #059669);box-shadow:0 4px 15px rgba(16, 185, 129, 0.3)" onclick="runCertVerification()">âœ¨ Initialize AI Verification</button>
+        <button id="verify-cert-btn" class="premium-btn" style="margin-top:20px;display:none;background:linear-gradient(135deg, #10b981, #059669);box-shadow:0 4px 15px rgba(16, 185, 129, 0.3)" onclick="runCertVerification()">✨ Initialize AI Verification</button>
         
         <div id="cert-verify-res" style="margin-top:16px"></div>
       </div>
@@ -226,7 +226,7 @@
     <!-- REQUEST NEEDS (FOOD / FUNDS) -->
     <div class="glass-card">
       <div class="glass-head">
-        <span style="font-size:1.5rem">ðŸ“¢</span>
+        <span style="font-size:1.5rem">📢</span>
         <h3>Publish Request (Food / Funds)</h3>
       </div>
       <div>
@@ -234,8 +234,8 @@
           <div class="fg">
             <label class="glass-label">Request Category *</label>
             <select id="treq-type" class="glass-input" onchange="toggleTrustReqType()">
-              <option value="food">ðŸ± Community Food Request</option>
-              <option value="funds">ðŸ’° Monetary Funding (Verified Only)</option>
+              <option value="food">🍱 Community Food Request</option>
+              <option value="funds">💰 Monetary Funding (Verified Only)</option>
             </select>
           </div>
           
@@ -255,7 +255,7 @@
               <label class="glass-label">Delivery Location *</label>
               <div style="display:flex;gap:10px">
                 <input type="text" id="treq-loc" class="glass-input" placeholder="e.g. Anna Nagar, Madurai" style="flex:1">
-                <button type="button" class="premium-btn" style="width:auto;padding:12px;background:rgba(255,255,255,0.1);box-shadow:none" onclick="autoFillTrustLocation()" title="Auto Detect Location">ðŸ“</button>
+                <button type="button" class="premium-btn" style="width:auto;padding:12px;background:rgba(255,255,255,0.1);box-shadow:none" onclick="autoFillTrustLocation()" title="Auto Detect Location">📍</button>
               </div>
             </div>
           </div>
@@ -264,7 +264,7 @@
           <div id="treq-fund-fields" style="display:none">
             <div id="fund-lock-msg" style="padding:14px;background:rgba(239, 68, 68, 0.1);color:#fca5a5;border:1px solid rgba(239, 68, 68, 0.2);border-radius:12px;font-size:.9rem;margin-bottom:20px;display:block">
               <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-size:1.4rem">ðŸ”’</span>
+                <span style="font-size:1.4rem">🔒</span>
                 <div>
                   <strong style="color:#f87171">Action Locked</strong><br>
                   You must complete AI document verification to access monetary requests.
@@ -273,7 +273,7 @@
             </div>
             <div id="fund-input-fields" style="opacity:0.4;pointer-events:none;transition:all 0.3s ease">
               <div class="fg">
-                <label class="glass-label">Amount Required (â‚¹) *</label>
+                <label class="glass-label">Amount Required (₹) *</label>
                 <input type="number" id="treq-fund-amount" class="glass-input" placeholder="e.g. 25000" disabled>
               </div>
               <div class="fg">
@@ -287,7 +287,7 @@
             </div>
           </div>
           
-          <button type="submit" id="treq-submit-btn" class="premium-btn" style="margin-top:10px">ðŸš€ Publish Request to Network</button>
+          <button type="submit" id="treq-submit-btn" class="premium-btn" style="margin-top:10px">🚀 Publish Request to Network</button>
         </form>
       </div>
     </div>
@@ -295,13 +295,13 @@
     <!-- INCOMING DONATIONS -->
     <div class="glass-card">
       <div class="glass-head">
-        <span style="font-size:1.5rem">ðŸ“¬</span>
+        <span style="font-size:1.5rem">📬</span>
         <h3>Donation & Fulfillment Status</h3>
       </div>
       <div>
         <div id="trust-donations-list">
            <div style="text-align:center;padding:40px;opacity:0.5">
-             <div style="font-size:3rem;margin-bottom:10px">ðŸ“­</div>
+             <div style="font-size:3rem;margin-bottom:10px">📭</div>
              <p style="margin:0;font-size:0.95rem">No donations or fulfillments recorded yet.</p>
            </div>
         </div>
