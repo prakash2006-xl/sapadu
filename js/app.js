@@ -80,6 +80,15 @@ async function syncDatabase() {
             DB.messages = msgRes.data || [];
             DB.platform_stats = statRes?.data || null;
             DB.notifications = notifRes.data || [];
+
+            // Frontend Auto-Expiry Check
+            const now = new Date();
+            DB.donations.forEach(d => {
+                if (d.status === 'available' && new Date(d.expiry_date) < now) {
+                    d.status = 'expired'; // Treat as expired locally without DB write
+                }
+            });
+            
             saveDB();
             
             // Update debug status if element exists
@@ -105,7 +114,7 @@ const APP={role:null,user:null,name:null,slot:null,maps:{},charts:{},userLat:nul
 
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const fClass=s=>{s=+s;return s>=8?'bg-g':s>=5?'bg-y':'bg-r'};
-const sBadge=s=>({available:'bg-g',requested:'bg-y',delivered:'bg-t',pending:'bg-y',assigned:'bg-b',done:'bg-t',busy:'bg-r',active:'bg-g'})[s]||'bg-g';
+const sBadge=s=>({available:'bg-g',requested:'bg-y',delivered:'bg-t',pending:'bg-y',assigned:'bg-b',done:'bg-t',completed:'bg-t',expired:'bg-r',busy:'bg-r',active:'bg-g'})[s]||'bg-g';
 const pClass=s=>{s=+s;return s>=70?'color:var(--r1);font-weight:700':s>=40?'color:var(--a1);font-weight:700':'color:var(--g2);font-weight:700'};
 const stars=s=>{const f=Math.min(5,Math.round(+s||0));return'★'.repeat(f)+'☆'.repeat(5-f)};
 const ago=ts=>{const d=Math.floor((Date.now()-new Date(ts))/1000);if(d<60)return d+'s ago';if(d<3600)return Math.floor(d/60)+'m ago';return Math.floor(d/3600)+'h ago'};
@@ -935,7 +944,7 @@ function initLiveMap(elId, prefix) {
 
 const freshScore=(mfg,exp)=>{const now=new Date(),m=new Date(mfg),e=new Date(exp);const tot=(e-m)/86400000,rem=(e-now)/86400000;return Math.round(Math.max(0,Math.min(1,rem/tot))*100)/10;};
 const expiryDays=exp=>Math.max(0,Math.round((new Date(exp)-new Date())/86400000));
-const priorityScore=(urg,days,fresh)=>Math.round(Math.min(100,(urg==='High'?60:20)+Math.max(0,30-Math.min(30,days))+(+fresh*1.5)));
+const priorityScore=(urg,days,fresh)=>{let s=(urg==='High'?60:20)+Math.max(0,30-Math.min(30,days))+(+fresh*1.5);if(days<=1)s+=40;return Math.round(Math.min(100,s));};
 
 function togglePaySection(){
   const v=byId('pay-type-select').value;
