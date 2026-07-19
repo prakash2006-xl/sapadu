@@ -50,12 +50,22 @@
         <div class="card-body">
           <form id="donate-form">
               <div class="fg"><label>Your Name *</label><input name="donor_name" placeholder="Full name" required></div>
+                        <div class="fg">
+              <label>Item Category *</label>
+              <select name="item_category" id="item-category-sel" onchange="onCategoryChange()">
+                <option value="auto">🤖 Auto-Detect (AI)</option>
+                <option value="cooked">🍚 Cooked Food (Expires Fast)</option>
+                <option value="raw">🥕 Raw Food / Veggies</option>
+                <option value="packaged">📦 Packaged / Preserved Food</option>
+                <option value="material">👕 Non-Food / Material (Clothes, Books, etc.)</option>
+              </select>
+            </div>
             <div class="fg">
               <label style="display:flex;align-items:center;justify-content:space-between">
-                Food Name *
+                Item Name *
                 <span id="food-type-pill" style="display:none"></span>
               </label>
-              <input name="food_name" id="food-name-inp" placeholder="e.g. Rice, Sambar, Idli, Carrot…" required oninput="onFoodNameInput(this.value)" autocomplete="off">
+              <input name="food_name" id="food-name-inp" placeholder="e.g. Rice, Clothes, Books, Carrot…" required oninput="onFoodNameInput(this.value)" autocomplete="off">
             </div>
             <div id="expiry-predict-box"></div>
             <div class="row2">

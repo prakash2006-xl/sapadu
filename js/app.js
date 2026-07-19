@@ -337,21 +337,43 @@ function showExpiryLoading(){
   byId('expiry-predict-box').innerHTML=`<div class="predict-loading"><div class="spin" style="border-top-color:#22c55e;width:16px;height:16px;border-width:2px"></div><span>🤖 Analyzing food item…</span></div>`;
 }
 
-function runExpiryPrediction(foodName){
-  const nfCheck=detectNonFood(foodName);
-  if(nfCheck.isNonFood){
-    showNonFoodWarning(foodName,nfCheck.matched);
-    toast(`⚠️ "${foodName}" is not a food item! Please enter a valid food name.`,'err',4000);
-    return;
+window.onCategoryChange = function() {
+  const inp = byId('food-name-inp');
+  if(inp && inp.value.trim().length >= 2) {
+      onFoodNameInput(inp.value);
   }
-  const result=classifyFood(foodName);if(!result){byId('expiry-predict-box').innerHTML='';return;}
+};
+
+function runExpiryPrediction(foodName){
+  const categorySel = byId('item-category-sel');
+  const cat = categorySel ? categorySel.value : 'auto';
+  
+  let result = null;
+  if (cat === 'auto') {
+      const nfCheck=detectNonFood(foodName);
+      if(nfCheck.isNonFood){
+        showNonFoodWarning(foodName,nfCheck.matched);
+        toast(`⚠️ "${foodName}" is not a food item! Please enter a valid food name.`,'err',4000);
+        return;
+      }
+      result = classifyFood(foodName);
+  } else {
+      // Manual Override
+      const typeInfo = FOOD_DB[cat];
+      if(typeInfo) {
+          result = { type: cat, days: typeInfo.days, name: foodName.toLowerCase() };
+      }
+  }
+  
+  if(!result){byId('expiry-predict-box').innerHTML='';return;}
   const typeInfo=FOOD_DB[result.type];
+
   const now=new Date();const expDate=new Date(now);
   expDate.setDate(expDate.getDate()+result.days);
   const mfgStr=formatDateValue(now),expStr=formatDateValue(expDate);
   currentFoodType=result.type;aiPredictedMfg=mfgStr;aiPredictedExpiry=expStr;
 
-  const pillColors={cooked:'#92400e,#fffbeb,#fcd34d',raw:'#065f46,#ecfdf5,#6ee7b7',packaged:'#1e3a5f,#eff6ff,#93c5fd'};
+  const pillColors={cooked:'#92400e,#fffbeb,#fcd34d',raw:'#065f46,#ecfdf5,#6ee7b7',packaged:'#1e3a5f,#eff6ff,#93c5fd',material:'#4b5563,#f3f4f6,#d1d5db'};
   const[tc,bg,bc]=pillColors[result.type].split(',');
   byId('food-type-pill').innerHTML=`<span style="display:inline-flex;align-items:center;gap:4px;background:${bg};color:${tc};border:1px solid ${bc};padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:700">${typeInfo.icon} ${typeInfo.label}</span>`;
   byId('food-type-pill').style.display='inline-flex';
@@ -361,7 +383,7 @@ function runExpiryPrediction(foodName){
     <div class="predict-result" style="border:1.5px solid ${bc};border-radius:10px;overflow:hidden;background:${bg}">
       <div style="padding:8px 12px;background:${tc === '#92400e' ? 'rgba(146,64,14,0.08)' : tc === '#065f46' ? 'rgba(6,95,70,0.08)' : 'rgba(30,58,95,0.08)'};display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:.74rem;font-weight:700;color:${tc};display:flex;align-items:center;gap:5px">${typeInfo.icon} AI Expiry Prediction</span>
-        <span style="font-size:.68rem;opacity:.7;color:${tc}">🤖 Text Model</span>
+        <span style="font-size:.68rem;opacity:.7;color:${tc}">${cat === 'auto' ? '🤖 AI Auto-Detect' : '👤 Manual Selection'}</span>
       </div>
       <div style="padding:10px 12px">
         <div class="predict-dates-clean">
@@ -897,15 +919,15 @@ function initLiveMap(elId, prefix) {
   const el = byId(elId);
   if (!el) return;
   try {
+    if (el._leaflet_id) el._leaflet_id = null;
     const m = L.map(elId, { attributionControl: false, zoomControl: true }).setView([lat, lng], 17);
-    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains: ['mt0','mt1','mt2','mt3'], maxZoom: 20 }).addTo(m);
     APP.maps[mapKey] = m;
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains: ['mt0','mt1','mt2','mt3'], maxZoom: 20 }).addTo(m);
     APP.maps[mapKey+'_circle'] = L.circle([lat, lng], { radius: APP.userAccuracy||20, color:'#4285F4', fillColor:'#4285F4', fillOpacity:.15, weight:1.5 }).addTo(m);
     APP.maps[mapKey+'_marker'] = L.marker([lat, lng], { icon: L.divIcon({ html:`<div style="position:relative;width:22px;height:22px"><div style="position:absolute;inset:0;background:#4285F4;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(66,133,244,.6)"></div></div>`, className:'', iconSize:[22,22], iconAnchor:[11,11] }) }).addTo(m);
     const txtEl = byId(prefix+'-loc-txt');
     if (txtEl) txtEl.textContent = `📍 Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
     if (APP.userLat && APP.userLng) updateAllLiveMarkers();
-    // Double invalidateSize: first immediate, then after tiles load
     setTimeout(() => { try { m.invalidateSize(); } catch(e){} }, 100);
     setTimeout(() => { try { m.invalidateSize(); m.setView([lat, lng], 17); } catch(e){} }, 600);
   } catch(e) { console.error('Map init error:', elId, e); }
@@ -929,8 +951,19 @@ if(donateForm) donateForm.addEventListener('submit', async e=>{
   const mfg=f.mfg_date.value,exp=f.expiry_date.value;
   const loc_text=f.location_text.value.trim(),pay_type=f.payment_type.value;
   if(!donor_name||!food_name||qty<=0||!mfg||!exp||!loc_text||!pay_type){toast('Please fill all required fields','err');return}
-  const nfCheck=detectNonFood(food_name);
-  if(nfCheck.isNonFood){toast(`🚫 "${food_name}" is not a food item! Only food donations are accepted.`,'err',4000);showNonFoodWarning(food_name,nfCheck.matched);return;}
+  
+  const categorySel = byId('item-category-sel');
+  const cat = categorySel ? categorySel.value : 'auto';
+  
+  if (cat === 'auto') {
+      const nfCheck = detectNonFood(food_name);
+      if(nfCheck.isNonFood){
+          toast(`🚫 "${food_name}" is not a food item! Only food donations are accepted.`,'err',4000);
+          showNonFoodWarning(food_name,nfCheck.matched);
+          return;
+      }
+  }
+
   if(new Date(exp)<=new Date(mfg)){toast('Expiry must be after manufacture date','err');return}
   const fresh=freshScore(mfg,exp),days=expiryDays(exp);
   let payInfo='';
@@ -1306,7 +1339,7 @@ function openConnectModal(donationId) {
                     }
                 }
             }
-        }, 2500);
+        }, 1000);
     }, 100);
 }
 
