@@ -1,9 +1,9 @@
-// Array of API keys for fallback rotation.
-// Replace these dummy keys with your actual OpenRouter API keys.
+// Array of API keys for true round-robin rotation.
+// These are your new OpenRouter API keys.
 const OPENROUTER_API_KEYS = [
-    "sk-or-v1-" + "90503136b5e6510a0ba01c5f00c55b48904878dead917e963734552e78ff3a77",
-    "sk-or-v1-" + "2bdee4473c2b2a976baf3ed6b79656209ce96d7b4411cff91c57fdcbd408a7cb",
-    "sk-or-v1-" + "649fe517c68a654729844bb76ebfc57d28961f07b4e0ca4d9bd851bc24d34706",
-    "sk-or-v1-" + "a5e9385f398baa63960c04a6a6bb5bd5710aa701127163cf3401b2499fc5ca18",
-    "sk-or-v1-" + "e8599d3c89eb649f2771b6c98bf3fc7d85d661fd5bc80b7758633743f35e0a5d"
+    "sk-or-v1-" + "c25e7c6a9beed1f880d009146527c6e73c71039007f9e656321549e5443950db",
+    "sk-or-v1-" + "ace564a1c3a03a6ff10913b5f9c5cdc70133a1bd7a2ca6b2a3068e8009151362",
+    "sk-or-v1-" + "683168e535e9cb9587f180566e5c3d4c47b7703fc2ce4e3f7ea7a176365d93b2",
+    "sk-or-v1-" + "ed6c16f356b8eddce7383fae6fbb6c2e1afcb255159953674b682a2d6628ded7",
+    "sk-or-v1-" + "d82eef7c3c560fece453bff3c0d0fe26b81fd13f504ef5af795c3f4845e3e8f9"
 ];
